@@ -47,7 +47,6 @@
 .main-button {
     border-radius: 25px;
     background-color: var(--button-color);
-    /* Use the button color variable */
     color: var(--button-text);
     align-items: center;
     justify-content: center;

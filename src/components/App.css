@@ -20,17 +20,14 @@
 
 .App-header {
   background-color: #282c34;
-  min-height: 5vh;
+  min-height: 7vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
   color: white;
-}
-
-.App-link {
-  color: #61dafb;
+  width: 100%;
+  height: 100%;
 }
 
 @keyframes App-logo-spin {
@@ -41,4 +38,45 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.header-row {
+  width: 100%;
+  background-color: #008CBA;
+  /* remove background after attaching wallet properly */
+  display: grid;
+  position: relative;
+  grid-template-columns: auto auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-name {
+  font-size: 24px;
+  padding-left: 2rem;
+}
+
+.connect-wallet-address {
+  padding-right: 2rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.header-button {
+  border-radius: 25px;
+  background-color: var(--button-color);
+  color: var(--button-text);
+  align-items: center;
+  justify-content: center;
+  display: flex;
+  flex-direction: row;
+  font-size: 16px;
+  width: 110px;
+  height: 50px;
+  text-align: center;
+}
+
+.wallet-address {
+  font-size: 16px;
 }
