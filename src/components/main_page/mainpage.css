@@ -2,9 +2,9 @@
     display: flex;
     justify-content: space-between;
     padding: 20px;
-  }
-  
-  .column {
+}
+
+.column {
     flex: 50%;
     padding: 20px;
-  }
+}
