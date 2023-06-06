@@ -261,9 +261,14 @@ contract YieldAggregator is ReentrancyGuard {
 
     function calculateAaveAPY() public view returns (uint256) {
         // Fetch liquidity rate from Aave contract
-        uint256 liquidityRate = aavePool.getReserveNormalizedIncome(
-            address(weth)
-        );
+        uint256 liquidityRate;
+        try aavePool.getReserveNormalizedIncome(address(weth)) returns (
+            uint256 _liquidityRate
+        ) {
+            liquidityRate = _liquidityRate;
+        } catch {
+            revert("YieldAggregator: Failed to fetch liquidity rate from Aave");
+        }
 
         // Calculate APY
         uint256 depositAPY = (1 + (liquidityRate / RAY / SECONDS_PER_YEAR)) **
@@ -275,7 +280,16 @@ contract YieldAggregator is ReentrancyGuard {
 
     function calculateCompoundAPY() public view returns (uint256) {
         // Fetch supply rate per block from Compound contract
-        uint256 supplyRatePerBlock = compound.supplyRatePerBlock();
+        uint256 supplyRatePerBlock;
+        try compound.supplyRatePerBlock() returns (
+            uint256 _supplyRatePerBlock
+        ) {
+            supplyRatePerBlock = _supplyRatePerBlock;
+        } catch {
+            revert(
+                "YieldAggregator: Failed to fetch supply rate from Compound"
+            );
+        }
 
         // Calculate APY
         uint256 supplyAPY = (1 + (supplyRatePerBlock / 1e18)) **
@@ -285,7 +299,7 @@ contract YieldAggregator is ReentrancyGuard {
         return supplyAPY;
     }
 
-    function rebalance() public {
+    function rebalance() public nonReentrant {
         // Calculate the APY for each protocol
         uint256 aaveAPY = calculateAaveAPY();
         uint256 compoundAPY = calculateCompoundAPY();
@@ -294,15 +308,33 @@ contract YieldAggregator is ReentrancyGuard {
         if (aaveAPY > compoundAPY) {
             // Move funds from Compound to Aave
             uint256 compoundBalance = balances[msg.sender].compoundBalance;
-            _withdrawFromCompound(compoundBalance);
-            _depositToAave(compoundBalance);
+            try _withdrawFromCompound(compoundBalance) {
+                try _depositToAave(compoundBalance) {
+                    balances[msg.sender].aaveBalance += compoundBalance;
+                    balances[msg.sender].compoundBalance -= compoundBalance;
+                } catch {
+                    revert("YieldAggregator: Deposit to Aave failed");
+                }
+            } catch {
+                revert("YieldAggregator: Withdrawal from Compound failed");
+            }
         } else if (compoundAPY > aaveAPY) {
             // Move funds from Aave to Compound
             uint256 aaveBalance = balances[msg.sender].aaveBalance;
-            _withdrawFromAave(aaveBalance);
-            _depositToCompound(aaveBalance);
+            try _withdrawFromAave(aaveBalance) {
+                try _depositToCompound(aaveBalance) {
+                    balances[msg.sender].compoundBalance += aaveBalance;
+                    balances[msg.sender].aaveBalance -= aaveBalance;
+                } catch {
+                    revert("YieldAggregator: Deposit to Compound failed");
+                }
+            } catch {
+                revert("YieldAggregator: Withdrawal from Aave failed");
+            }
         } else {
-            revert("YieldAggregator: Funds are in highest earning protocol, no need to rebalance.");
+            revert(
+                "YieldAggregator: Funds are in highest earning protocol, no need to rebalance."
+            );
         }
     }
 
