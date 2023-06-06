@@ -32,7 +32,7 @@ const MainPage = () => {
           <div className="main-column-right">
             <p>Current balance: {accountBalance}</p>
             <p>
-              Amount deposited to the aggregator smart contract:{' '}
+              Amount deposited to the aggregator smart contract:
               {depositedAmount}
             </p>
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
