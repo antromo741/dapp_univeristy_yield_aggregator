@@ -15,6 +15,20 @@ const aTokenAddress = '...';
 const cToken = new ethers.Contract(cTokenAddress, cTokenABI, provider);
 const aToken = new ethers.Contract(aTokenAddress, aTokenABI, provider);
 
+// ABI and address for YieldAggregator contract
+const aggregatorABI = [...];
+const aggregatorAddress = '...';
+
+// Create a contract instance
+const aggregator = new ethers.Contract(aggregatorAddress, aggregatorABI, provider);
+
+// Create a signer (you need to replace 'YOUR_PRIVATE_KEY' with your actual private key)
+const signer = new ethers.Wallet('YOUR_PRIVATE_KEY', provider);
+
+// Create a contract instance that can make transactions
+const aggregatorWithSigner = aggregator.connect(signer);
+
+
 async function calculateAPYs() {
     // Fetch supply rate per block from Compound contract
     const supplyRatePerBlock = await cToken.supplyRatePerBlock();
@@ -65,18 +79,12 @@ async function calculateAPYsAndRebalance() {
     // Calculate APYs
     const { compoundAPY, aaveAPY } = await calculateAPYs();
 
-    // Connect to your smart contract
-    const aggregator = new ethers.Contract(contractAddress, contractABI, provider);
-
-    // Connect to your account
-    const signer = provider.getSigner();
-    const aggregatorWithSigner = aggregator.connect(signer);
-
-    // Determine which protocol to rebalance to
-    const protocol = compoundAPY > aaveAPY ? 2 : 1;
+    // Decide which protocol to use
+    const newProtocol = compoundAPY > aaveAPY ? 2 : 1;
 
     // Call the rebalance function
-    await aggregatorWithSigner.rebalance(protocol);
+    await aggregatorWithSigner.rebalance(newProtocol);
 }
+
 
 calculateAPYsAndRebalance().catch(console.error);

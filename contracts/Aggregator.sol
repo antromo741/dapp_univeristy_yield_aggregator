@@ -10,7 +10,7 @@ import "https://github.com/Compound-finance/compound-protocol/blob/master/contra
 
 // Implement the Checks Effects and Interactions Method
 
-interface IAavePool {
+interface IAaveV3Pool {
     function supply(
         address asset,
         uint256 amount,
@@ -129,7 +129,7 @@ contract YieldAggregator is ReentrancyGuard {
         emit Deposit(msg.sender, amount);
     }
 
-    function depositToCompound(uint amount) public {
+    function _depositToCompound(uint amount) public {
         // Check if the user has enough balance to deposit
         require(
             weth.balanceOf(msg.sender) >= amount,
@@ -259,10 +259,7 @@ contract YieldAggregator is ReentrancyGuard {
 
     // TODO This uses a javascript function to check apys
     // TODO Emit Events
-    function rebalance() public {
-        // Get APYs from off-chain
-        uint8 newProtocol = getAPYs();
-
+    function rebalance(uint8 newProtocol) public {
         // Rebalance based on the new protocol
         if (newProtocol != activeProtocol) {
             if (newProtocol == 1) {
