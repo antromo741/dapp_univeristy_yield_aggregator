@@ -77,7 +77,7 @@ contract YieldAggregator is ReentrancyGuard {
     // Save the addresses of the Aave and Compound contracts
     IAaveV3Pool public aavePool;
     ICompound public compound;
-
+    uint8 public activeProtocol;
     // Save the address of the WETH token contract
     IERC20 public weth;
 
@@ -160,23 +160,24 @@ contract YieldAggregator is ReentrancyGuard {
     }
 
     // Main deposit function
-    function deposit(uint amount, uint8 protocol) public {
+    function deposit(uint amount) public {
         // Check that the user has approved the contract to transfer the tokens
         require(
             weth.allowance(msg.sender, address(this)) >= amount,
             "YieldAggregator: Not enough allowance"
         );
-        // TODO Need to check the higher APY before it deposits
-        if (protocol == 1) {
+
+        // Deposit based on the active protocol
+        if (activeProtocol == 1) {
             _depositToAave(amount);
-        } else if (protocol == 2) {
+        } else if (activeProtocol == 2) {
             _depositToCompound(amount);
         } else {
             revert("YieldAggregator: Invalid protocol");
         }
 
         // Emit a Deposit event
-        emit Deposit(msg.sender, amount, protocol);
+        emit Deposit(msg.sender, amount);
     }
 
     function _withdrawFromAave(uint amount) public {
@@ -227,16 +228,17 @@ contract YieldAggregator is ReentrancyGuard {
         emit Withdraw(msg.sender, amount);
     }
 
-    function withdraw(uint amount, uint8 protocol) public nonReentrant {
+    function withdraw(uint amount) public nonReentrant {
         uint256 balanceBefore = weth.balanceOf(msg.sender);
 
-        if (protocol == 1) {
+        // Withdraw based on the active protocol
+        if (activeProtocol == 1) {
             require(
                 balances[msg.sender].aaveBalance >= amount,
                 "YieldAggregator: Not enough balance in Aave"
             );
             _withdrawFromAave(amount);
-        } else if (protocol == 2) {
+        } else if (activeProtocol == 2) {
             require(
                 balances[msg.sender].compoundBalance >= amount,
                 "YieldAggregator: Not enough balance in Compound"
@@ -252,44 +254,53 @@ contract YieldAggregator is ReentrancyGuard {
             "YieldAggregator: Withdrawal didn't increase balance"
         );
 
-        emit Withdraw(msg.sender, amount, protocol, balanceAfter);
+        emit Withdraw(msg.sender, amount);
     }
 
     // TODO This uses a javascript function to check apys
-    function rebalance(uint8 protocol) public {
-        // Check which protocol to rebalance to
-        if (protocol == 1) {
-            // Check that the user has enough cTokens in the Compound pool
-            uint256 compoundBalance = balances[msg.sender].compoundBalance;
-            require(
-                compound.balanceOfUnderlying(msg.sender) >= compoundBalance,
-                "YieldAggregator: Not enough balance in Compound"
-            );
+    // TODO Emit Events
+    function rebalance() public {
+        // Get APYs from off-chain
+        uint8 newProtocol = getAPYs();
 
-            // Move funds from Compound to Aave
-            _withdrawFromCompound(compoundBalance);
-            _depositToAave(compoundBalance);
+        // Rebalance based on the new protocol
+        if (newProtocol != activeProtocol) {
+            if (newProtocol == 1) {
+                // Check that the user has enough cTokens in the Compound pool
+                uint256 compoundBalance = balances[msg.sender].compoundBalance;
+                require(
+                    compound.balanceOfUnderlying(msg.sender) >= compoundBalance,
+                    "YieldAggregator: Not enough balance in Compound"
+                );
 
-            // Update the user's balance in this contract
-            balances[msg.sender].compoundBalance -= compoundBalance;
-            balances[msg.sender].aaveBalance += compoundBalance;
-        } else if (protocol == 2) {
-            // Check that the user has enough aTokens in the Aave pool
-            uint256 aaveBalance = balances[msg.sender].aaveBalance;
-            require(
-                aavePool.balanceOf(msg.sender) >= aaveBalance,
-                "YieldAggregator: Not enough balance in Aave"
-            );
+                // Move funds from Compound to Aave
+                _withdrawFromCompound(compoundBalance);
+                _depositToAave(compoundBalance);
 
-            // Move funds from Aave to Compound
-            _withdrawFromAave(aaveBalance);
-            _depositToCompound(aaveBalance);
+                // Update the user's balance in this contract
+                balances[msg.sender].compoundBalance -= compoundBalance;
+                balances[msg.sender].aaveBalance += compoundBalance;
+            } else if (newProtocol == 2) {
+                // Check that the user has enough aTokens in the Aave pool
+                uint256 aaveBalance = balances[msg.sender].aaveBalance;
+                require(
+                    aavePool.balanceOf(msg.sender) >= aaveBalance,
+                    "YieldAggregator: Not enough balance in Aave"
+                );
 
-            // Update the user's balance in this contract
-            balances[msg.sender].aaveBalance -= aaveBalance;
-            balances[msg.sender].compoundBalance += aaveBalance;
-        } else {
-            revert("YieldAggregator: Invalid protocol");
+                // Move funds from Aave to Compound
+                _withdrawFromAave(aaveBalance);
+                _depositToCompound(aaveBalance);
+
+                // Update the user's balance in this contract
+                balances[msg.sender].aaveBalance -= aaveBalance;
+                balances[msg.sender].compoundBalance += aaveBalance;
+            } else {
+                revert("YieldAggregator: Invalid protocol");
+            }
+
+            // Update the active protocol
+            activeProtocol = newProtocol;
         }
     }
 

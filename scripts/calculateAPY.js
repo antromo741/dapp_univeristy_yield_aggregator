@@ -72,8 +72,11 @@ async function calculateAPYsAndRebalance() {
     const signer = provider.getSigner();
     const aggregatorWithSigner = aggregator.connect(signer);
 
+    // Determine which protocol to rebalance to
+    const protocol = compoundAPY > aaveAPY ? 2 : 1;
+
     // Call the rebalance function
-    await aggregatorWithSigner.rebalance(compoundAPY, aaveAPY);
+    await aggregatorWithSigner.rebalance(protocol);
 }
 
 calculateAPYsAndRebalance().catch(console.error);
