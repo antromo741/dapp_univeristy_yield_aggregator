@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { ethers } from 'ethers';
 import './mainpage.css'
 
-const MainPage = () => {
+const MainPage = ({ account }) => {
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
   const [depositedAmount, setDepositedAmount] = useState(0)
@@ -12,6 +13,21 @@ const MainPage = () => {
   }
 
   // Add handlers for Deposit, Rebalance, and Withdraw here
+  const handleDeposit = async () => {
+    // Call the deposit function on your smart contract
+  }
+
+  const handleRebalance = async () => {
+    // Call the rebalance function on your smart contract
+  }
+
+  const handleWithdraw = async () => {
+    // Call the withdraw function on your smart contract
+  }
+
+  useEffect(() => {
+    // Fetch the current balance, deposited amount, and current protocol
+  }, [account]);
 
   return (
     <div>
@@ -25,9 +41,9 @@ const MainPage = () => {
               onChange={handleAmountChange}
               placeholder="Enter amount to deposit"
             />
-            <button className="main-button">Deposit</button>
-            <button className="main-button">Rebalance</button>
-            <button className="main-button">Withdraw</button>
+            <button className="main-button" onClick={handleDeposit}>Deposit</button>
+            <button className="main-button" onClick={handleRebalance}>Rebalance</button>
+            <button className="main-button"onClick={handleWithdraw}>Withdraw</button>
           </div>
           <div className="main-column-right">
             <p>Current balance: {accountBalance}</p>
