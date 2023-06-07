@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { ethers } from 'ethers';
+import { ethers } from 'ethers'
 import './mainpage.css'
+// TODO need to update
+import contractABI from '../path/to/your/contractABI.json'
 
 const MainPage = ({ account }) => {
+  // TODO Replace with your contract's address
+  const contractAddress = '...'
+  const provider = new ethers.providers.Web3Provider(window.ethereum)
+  // TODO need to add to onMount so it only runs once.
+  const contract = new ethers.Contract(contractAddress, contractABI, provider)
+
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
   const [depositedAmount, setDepositedAmount] = useState(0)
@@ -12,22 +20,97 @@ const MainPage = ({ account }) => {
     setAmount(e.target.value)
   }
 
+  useEffect(() => {
+    const fetchDepositedAmount = async () => {
+      const depositedAmount = await contract.depositedAmount(account)
+      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
+    }
+
+    fetchDepositedAmount()
+  }, [account, contract])
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      // Get the signer
+      const signer = provider.getSigner()
+
+      // Get the user's address
+      const address = await signer.getAddress()
+
+      // Connect to the contract with the signer
+      const contractWithSigner = contract.connect(signer)
+
+      // Fetch the user's balance
+      const balance = await provider.getBalance(address)
+      setAccountBalance(ethers.utils.formatEther(balance))
+
+      // Fetch the user's deposited amount
+      const depositedAmount = await contractWithSigner.getDepositedAmount(
+        address,
+      )
+      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
+
+      // Fetch the current protocol
+      const protocol = await contractWithSigner.getCurrentProtocol()
+      setCurrentProtocol(protocol === 1 ? 'Aave' : 'Compound')
+    }
+
+    fetchUserData()
+  }, [amount, provider, contract])
+
   // Add handlers for Deposit, Rebalance, and Withdraw here
   const handleDeposit = async () => {
-    // Call the deposit function on your smart contract
-  }
+    // Get the signer
+    const signer = provider.getSigner()
 
-  const handleRebalance = async () => {
-    // Call the rebalance function on your smart contract
+    // Connect to the contract with the signer
+    const contractWithSigner = contract.connect(signer)
+
+    // Call the deposit function
+    const tx = await contractWithSigner.deposit(ethers.utils.parseEther(amount))
+
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait()
+
+    // Log the transaction receipt
+    console.log(receipt)
   }
 
   const handleWithdraw = async () => {
-    // Call the withdraw function on your smart contract
+    // Get the signer
+    const signer = provider.getSigner()
+
+    // Connect to the contract with the signer
+    const contractWithSigner = contract.connect(signer)
+
+    // Call the withdraw function
+    const tx = await contractWithSigner.withdraw(
+      ethers.utils.parseEther(amount),
+    )
+
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait()
+
+    // Log the transaction receipt
+    console.log(receipt)
   }
 
-  useEffect(() => {
-    // Fetch the current balance, deposited amount, and current protocol
-  }, [account]);
+  const handleRebalance = async () => {
+    // Get the signer
+    const signer = provider.getSigner()
+
+    // Connect to the contract with the signer
+    const contractWithSigner = contract.connect(signer)
+
+    // Call the rebalance function
+    const tx = await contractWithSigner.rebalance()
+
+    // Wait for the transaction to be mined
+    const receipt = await tx.wait()
+
+    // Log the transaction receipt
+    console.log(receipt)
+  }
 
   return (
     <div>
@@ -41,9 +124,15 @@ const MainPage = ({ account }) => {
               onChange={handleAmountChange}
               placeholder="Enter amount to deposit"
             />
-            <button className="main-button" onClick={handleDeposit}>Deposit</button>
-            <button className="main-button" onClick={handleRebalance}>Rebalance</button>
-            <button className="main-button"onClick={handleWithdraw}>Withdraw</button>
+            <button className="main-button" onClick={handleDeposit}>
+              Deposit
+            </button>
+            <button className="main-button" onClick={handleRebalance}>
+              Rebalance
+            </button>
+            <button className="main-button" onClick={handleWithdraw}>
+              Withdraw
+            </button>
           </div>
           <div className="main-column-right">
             <p>Current balance: {accountBalance}</p>
