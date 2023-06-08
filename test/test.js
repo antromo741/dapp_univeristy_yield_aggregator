@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("YieldAggregator", function () {
-  let YieldAggregator;
+  let accounts;
   let yieldAggregator;
   let owner;
   let addr1;
@@ -10,25 +10,30 @@ describe("YieldAggregator", function () {
   let addrs;
 
   beforeEach(async function () {
-    YieldAggregator = await ethers.getContractFactory("YieldAggregator");
-    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
+    // Get the ContractFactory and Signers here.
+    const YieldAggregator = await ethers.getContractFactory("YieldAggregator");
+
+    // To deploy our contract, we just have to call YieldAggregator.deploy() and await
+    // for it to be deployed(), which happens onces its transaction has been mined.
     yieldAggregator = await YieldAggregator.deploy();
+
+    [owner, addr1, addr2, ...addrs] = await ethers.getSigners();
   });
 
+  // You can nest describe calls to create subsections.
   describe("Deposit", function () {
-    it("Should deposit the correct amount", async function () {
-      // We'll use addr1 as the depositor for this test
-      const depositor = addr1;
+    it("Should deposit ETH", async function () {
+      // We'll use one of our Signers (owner) to send the transaction.
+      const depositTx = await yieldAggregator.connect(owner).depositETH({
+        value: ethers.utils.parseEther("1.0"), // Sends along 1 ETH.
+      });
 
-      // The amount to deposit (in wei)
-      const depositAmount = ethers.utils.parseEther("1.0"); // 1 ether
+      // Wait for the transaction to be mined, and get the transaction receipt.
+      const depositTxReceipt = await depositTx.wait();
 
-      // We need to send the deposit transaction from the depositor's account
-      await yieldAggregator.connect(depositor).deposit(depositAmount);
-
-      // After the deposit, the balance of the contract should be increased by the deposit amount
-      const balance = await ethers.provider.getBalance(yieldAggregator.address);
-      expect(balance).to.equal(depositAmount);
+      // Check that the contract's balance has been increased.
+      const contractBalance = await ethers.provider.getBalance(yieldAggregator.address);
+      expect(ethers.utils.formatEther(contractBalance)).to.equal("1.0");
     });
   });
 });
