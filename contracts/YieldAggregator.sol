@@ -38,23 +38,7 @@ interface IAaveV3Pool {
 
     function getReserveData(
         address asset
-    )
-        external
-        view
-        returns (
-            uint256 configuration,
-            uint128 liquidityIndex,
-            uint128 variableBorrowIndex,
-            uint128 currentLiquidityRate,
-            uint128 currentVariableBorrowRate,
-            uint128 currentStableBorrowRate,
-            uint40 lastUpdateTimestamp,
-            address aTokenAddress,
-            address stableDebtTokenAddress,
-            address variableDebtTokenAddress,
-            address interestRateStrategyAddress,
-            uint8 id
-        );
+    ) external view returns (ReserveData memory);
 }
 
 // Aave v3 IAToken interface
@@ -88,6 +72,20 @@ interface IAaveAToken {
         address recipient,
         uint256 amount
     ) external returns (bool);
+}
+struct ReserveData {
+    uint256 configuration;
+    uint128 liquidityIndex;
+    uint128 variableBorrowIndex;
+    uint128 currentLiquidityRate;
+    uint128 currentVariableBorrowRate;
+    uint128 currentStableBorrowRate;
+    uint40 lastUpdateTimestamp;
+    address aTokenAddress;
+    address stableDebtTokenAddress;
+    address variableDebtTokenAddress;
+    address interestRateStrategyAddress;
+    uint8 id;
 }
 
 interface ICompound {
@@ -131,15 +129,43 @@ interface IWETH is IERC20 {
     function deposit() external payable;
 }
 
+interface IWETHGateway {
+    function depositETH(
+        address lendingPool,
+        address onBehalfOf,
+        uint16 referralCode
+    ) external payable;
+
+    function withdrawETH(
+        address lendingPool,
+        uint256 amount,
+        address onBehalfOf
+    ) external;
+}
+
+interface ICEther {
+    function mint() external payable;
+    function balanceOfUnderlying(address account) external view returns (uint);
+
+    function redeemUnderlying(uint redeemAmount) external returns (uint);
+}
+
 contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the addresses of the Aave and Compound contracts
     address public constant COMPOUND_ADDRESS =
         0xA17581A9E3356d9A858b789D68B4d866e593aE94;
     address public constant AAVE_POOL_ADDRESS =
-        0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9;
+        0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
     address public constant WETH_ADDRESS =
         0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
+    IWETHGateway public constant WETH_GATEWAY_ADDRESS =
+        IWETHGateway(0xDcD33426BA191383f1c9B431A342498fdac73488);
+    ICEther public constant CETHER_ADDRESS =
+        ICEther(0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5);
+
+    IWETHGateway public wethGateway;
+    ICEther public cEther;
     IAaveV3Pool public aavePool;
     //0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9
     ICompound public compound;
@@ -148,7 +174,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the address of the WETH token contract
     IWETH public weth;
     //0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
-
     // To keep track of the user balances
     mapping(address => UserBalance) public balances;
 
@@ -168,76 +193,34 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         aavePool = IAaveV3Pool(AAVE_POOL_ADDRESS);
         compound = ICompound(COMPOUND_ADDRESS);
         weth = IWETH(WETH_ADDRESS);
+        wethGateway = IWETHGateway(WETH_GATEWAY_ADDRESS);
+        cEther = ICEther(CETHER_ADDRESS);
         activeProtocol = 1;
     }
 
     function getATokenAddress() public view returns (address) {
-        (, , , , , , , , , , address aTokenAddress, ) = aavePool.getReserveData(
-            address(weth)
-        );
-
-        return aTokenAddress;
+        ReserveData memory data = aavePool.getReserveData(address(weth));
+        return data.aTokenAddress;
     }
 
-    function _depositToAave(uint256 amount) public {
-        emit Debug("Entering _depositToAave");
-
-        // Check if the user has enough balance to deposit
-        require(
-            weth.balanceOf(msg.sender) >= amount,
-            "YieldAggregator: Not enough balance"
-        );
-        emit Debug("Passed balance check");
-
-        // Check that the user has approved the contract to transfer the tokens
-        require(
-            weth.allowance(msg.sender, address(this)) >= amount,
-            "YieldAggregator: Not enough allowance"
-        );
-        emit Debug("Passed allowance check");
-
-        // Transfer the tokens from the user to the contract
-        weth.transferFrom(msg.sender, address(this), amount);
-
-        // Approve the Aave pool to spend the tokens
-        weth.approve(address(aavePool), amount);
-
-        // Supply the tokens to the Aave pool
-        // 0 is a placeholder for the referal code,
-        // in case this ever goes to production
-        aavePool.supply(address(weth), amount, msg.sender, 0);
-
-        // Emit a Deposit event
+    function _depositToAave(uint256 amount) public payable {
+        require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
+        wethGateway.depositETH(address(aavePool), msg.sender, 0);
+        balances[msg.sender].aaveBalance += msg.value;
         emit Deposit(msg.sender, amount);
     }
 
-    function _depositToCompound(uint256 amount) public {
-        // Check if the user has enough balance to deposit
-        require(
-            weth.balanceOf(msg.sender) >= amount,
-            "YieldAggregator: Not enough balance"
-        );
+    function _depositToCompound(uint256 amount) public payable {
+        // Check if the amount of ETH sent matches the specified amount
+        require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
 
-        // Check that the user has approved the contract to transfer the tokens
-        require(
-            weth.allowance(msg.sender, address(this)) >= amount,
-            "YieldAggregator: Not enough allowance"
-        );
-
-        // Transfer the tokens from the user to this contract
-        weth.transferFrom(msg.sender, address(this), amount);
-
-        // Approve the Compound contract to spend the tokens
-        weth.approve(address(compound), amount);
-
-        // Call the mint function on the Compound contract
-        uint256 mintResult = compound.mint(amount);
-        require(mintResult == 0, "Mint failed");
+        // Deposit ETH directly into Compound
+        cEther.mint{value: msg.value}();
 
         // Update the user's balance in this contract
-        balances[msg.sender].compoundBalance += amount;
+        balances[msg.sender].compoundBalance += msg.value;
 
-        // Emit an event
+        // Emit a Deposit event
         emit Deposit(msg.sender, amount);
     }
 
@@ -262,56 +245,22 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Deposit(msg.sender, amount);
     }
 
-    function depositETH() external payable {
-        // Convert the ETH to WETH
-        weth.deposit{value: msg.value}();
-
-        // Approve the transfer of WETH from this contract to the Aave or Compound pool
-        weth.approve(address(aavePool), msg.value);
-        weth.approve(address(compound), msg.value);
-
-        // Now you can use the WETH in your contract
-        deposit(msg.value);
-    }
-
     function _withdrawFromAave(uint256 amount) public {
-        // Get the aToken contract for the WETH token
-        IAaveAToken aToken = IAaveAToken(getATokenAddress());
-
-        // Check that the user has enough aTokens in the Aave pool
-        require(
-            aToken.balanceOf(msg.sender) >= amount,
-            "YieldAggregator: Not enough balance in Aave"
-        );
-
-        // Withdraw the tokens from the Aave pool
-        aavePool.withdraw(address(weth), amount, address(this));
-
-        // Transfer the tokens from the contract to the user
-        bool success = weth.transfer(msg.sender, amount);
-        require(success, "Token transfer failed");
-
-        // Update the user's balance in this contract
+        wethGateway.withdrawETH(address(aavePool), amount, msg.sender);
         balances[msg.sender].aaveBalance -= amount;
-
-        // Emit a Withdraw event
         emit Withdraw(msg.sender, amount);
     }
 
     function _withdrawFromCompound(uint256 amount) public {
-        // Check that the user has enough cTokens in the Compound pool
+        // Check that the user has enough balance in Compound
         require(
-            compound.balanceOfUnderlying(msg.sender) >= amount,
+            cEther.balanceOfUnderlying(msg.sender) >= amount,
             "YieldAggregator: Not enough balance in Compound"
         );
 
-        // Withdraw the tokens from the Compound pool
-        uint256 redeemResult = compound.redeemUnderlying(amount);
+        // Withdraw ETH directly from Compound
+        uint redeemResult = cEther.redeemUnderlying(amount);
         require(redeemResult == 0, "Redeem failed");
-
-        // Transfer the tokens from the contract to the user
-        bool success = weth.transfer(msg.sender, amount);
-        require(success, "Token transfer failed");
 
         // Update the user's balance in this contract
         balances[msg.sender].compoundBalance -= amount;
@@ -402,6 +351,4 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         balances[msg.sender].aaveBalance -= aaveBalance;
         balances[msg.sender].compoundBalance += aaveBalance;
     }
-
-    // Additional functions to get interest rates, handle liquidations, etc.
 }
