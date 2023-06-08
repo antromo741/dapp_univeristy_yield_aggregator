@@ -145,6 +145,7 @@ interface IWETHGateway {
 
 interface ICEther {
     function mint() external payable;
+
     function balanceOfUnderlying(address account) external view returns (uint);
 
     function redeemUnderlying(uint redeemAmount) external returns (uint);
@@ -205,7 +206,8 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
     function _depositToAave(uint256 amount) public payable {
         require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
-        wethGateway.depositETH(address(aavePool), msg.sender, 0);
+        // Transfer WETH from the contract to Aave
+        weth.transfer(AAVE_POOL_ADDRESS, amount);
         balances[msg.sender].aaveBalance += msg.value;
         emit Deposit(msg.sender, amount);
     }
@@ -215,7 +217,7 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
 
         // Deposit ETH directly into Compound
-        cEther.mint{value: msg.value}();
+        weth.transfer(COMPOUND_ADDRESS, amount);
 
         // Update the user's balance in this contract
         balances[msg.sender].compoundBalance += msg.value;
@@ -225,11 +227,20 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     }
 
     // Main deposit function
-    function deposit(uint256 amount) public {
-        // Check that the user has approved the contract to transfer the tokens
+    function deposit() public payable {
+        uint256 amount = msg.value;
         require(
-            weth.allowance(msg.sender, address(this)) >= amount,
-            "YieldAggregator: Not enough allowance"
+            amount > 0,
+            "YieldAggregator: deposit amount must be greater than 0"
+        );
+
+        // Wrap ETH to WETH
+        weth.deposit{value: amount}();
+
+        // Check that the contract has received the WETH
+        require(
+            weth.balanceOf(address(this)) >= amount,
+            "YieldAggregator: WETH transfer failed"
         );
 
         // Deposit based on the active protocol
