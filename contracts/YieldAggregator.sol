@@ -1,14 +1,9 @@
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.10;
 
 // OpenZeppelin Contracts
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@aave/core-v3/contracts/protocol/tokenization/AToken.sol";
-
-// The Aave and Compound interfaces
-import "@aave/core-v3/contracts/interfaces/IPool.sol";
-import "./CErc20.sol";
-
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Implement the Checks Effects and Interactions Method
 
@@ -138,6 +133,13 @@ interface IWETH is IERC20 {
 
 contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the addresses of the Aave and Compound contracts
+    address public constant COMPOUND_ADDRESS =
+        0xA17581A9E3356d9A858b789D68B4d866e593aE94;
+    address public constant AAVE_POOL_ADDRESS =
+        0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9;
+    address public constant WETH_ADDRESS =
+        0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
     IAaveV3Pool public aavePool;
     //0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9
     ICompound public compound;
@@ -162,10 +164,10 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     event Rebalance(address indexed user);
     event Debug(string message);
 
-    constructor(address _aavePool, address _compound, address _weth) {
-        aavePool = IAaveV3Pool(_aavePool);
-        compound = ICompound(_compound);
-        weth = IWETH(_weth);
+    constructor() {
+        aavePool = IAaveV3Pool(AAVE_POOL_ADDRESS);
+        compound = ICompound(COMPOUND_ADDRESS);
+        weth = IWETH(WETH_ADDRESS);
         activeProtocol = 1;
     }
 
