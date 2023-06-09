@@ -16,7 +16,8 @@ After signing up at alchemy.com https://www.alchemy.com/ you can create  a porje
 
 We will take this key into our .env.example file. Paste ypur key where it asks and rename the .env.example. to just .env. This is a hidden file with sensitve information. Youu dont want to leave that key out for people to see.
 
-Next we are going to run npx hardhat node.
+Next we are going to run 
+### `npx hardhat node`
 
 This will allow us to run a local blockchain on a fork of the mainnet..
 
@@ -24,7 +25,9 @@ To test the code, please run npx hardhat test.
 
 After ensuring all the tests are passing you can now run the project.
 
-Type npm start to start the dev server.
+To start the dev server type
+
+### `npm start`
 
 Now we can interact with our react frontend. 
 
