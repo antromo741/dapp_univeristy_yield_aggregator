@@ -3,6 +3,7 @@ pragma solidity ^0.8.10;
 // OpenZeppelin Contracts
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Implement the Checks Effects and Interactions Method
@@ -15,7 +16,11 @@ interface IAaveV3Pool {
         uint16 referralCode
     ) external;
 
-    function withdraw(address asset, uint256 amount, address to) external;
+    function withdraw(
+        address asset,
+        uint256 amount,
+        address to
+    ) external returns (uint256);
 
     function borrow(
         address asset,
@@ -73,6 +78,7 @@ interface IAaveAToken {
         uint256 amount
     ) external returns (bool);
 }
+
 struct ReserveData {
     uint256 configuration;
     uint128 liquidityIndex;
@@ -125,12 +131,6 @@ interface ICompound {
     ) external returns (uint256);
 }
 
-interface IWETH is IERC20 {
-    function deposit() external payable;
-
-    function withdraw(uint256 amount) external;
-}
-
 interface IWETHGateway {
     function depositETH(
         address lendingPool,
@@ -153,8 +153,21 @@ interface ICEther {
     function redeemUnderlying(uint redeemAmount) external returns (uint);
 }
 
+interface IWETH is IERC20 {
+    function deposit() external payable;
+
+    function withdraw(uint256 amount) external;
+}
+
 contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the addresses of the Aave and Compound contracts
+    IWETHGateway public wethGateway;
+    ICEther public cEther;
+    IAaveV3Pool public aavePool;
+    ICompound public compound;
+    uint8 public activeProtocol;
+    IWETH public weth;
+
     address public constant COMPOUND_ADDRESS =
         0xA17581A9E3356d9A858b789D68B4d866e593aE94;
     address public constant AAVE_POOL_ADDRESS =
@@ -167,16 +180,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     ICEther public constant CETHER_ADDRESS =
         ICEther(0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5);
 
-    IWETHGateway public wethGateway;
-    ICEther public cEther;
-    IAaveV3Pool public aavePool;
-    //0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9
-    ICompound public compound;
-    //0xA17581A9E3356d9A858b789D68B4d866e593aE94
-    uint8 public activeProtocol;
-    // Save the address of the WETH token contract
-    IWETH public weth;
-    //0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
     // To keep track of the user balances
     mapping(address => UserBalance) public balances;
 
@@ -229,7 +232,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     }
 
     // Main deposit function
-    // Main deposit function
     function deposit(uint256 amount) public payable nonReentrant {
         require(
             amount > 0,
@@ -262,14 +264,13 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Deposit(msg.sender, amount);
     }
 
-    function _withdrawFromAave(uint256 amount) internal {
+    function _withdrawFromAave(uint256 amount) internal returns (uint256) {
         // Check user's Aave balance
         require(
             balances[msg.sender].aaveBalance >= amount,
             "YieldAggregator: Not enough user balance"
         );
 
-        // Withdraw underlying ETH from Aave pool
         aavePool.withdraw(WETH_ADDRESS, amount, address(this));
 
         // Check WETH balance
@@ -290,6 +291,8 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         balances[msg.sender].aaveBalance -= amount; // Decrement the Aave balance by the withdrawn amount
 
         emit Withdraw(msg.sender, amount);
+
+        return amount; // Return the amount of ETH withdrawn
     }
 
     function _withdrawFromCompound(uint256 amount) public {
@@ -304,7 +307,9 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         require(redeemResult == 0, "Redeem failed");
 
         // Update the user's balance in this contract
-        balances[msg.sender].compoundBalance -= amount;
+        balances[msg.sender].compoundBalance =
+            balances[msg.sender].compoundBalance -
+            amount;
 
         // Emit a Withdraw event
         emit Withdraw(msg.sender, amount);
@@ -337,6 +342,15 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         );
 
         emit Withdraw(msg.sender, amount);
+    }
+
+    function setActiveProtocol(uint8 newProtocol) external onlyOwner {
+        require(
+            newProtocol == 1 || newProtocol == 2,
+            "YieldAggregator: Invalid protocol"
+        );
+
+        activeProtocol = newProtocol;
     }
 
     // TODO This uses a javascript function to check apys

@@ -1,72 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
 import './mainpage.css'
-//import contractABI from '../path/to/your/contractABI.json'
-
-// ABI and address for Compound cToken contract
-const cTokenABI = [1234]
-const cTokenAddress = '1234'
-
-// ABI and address for Aave aToken contract
-const aTokenABI = [1234]
-const aTokenAddress = '1234'
-
-// ABI and address for YieldAggregator contract
-const aggregatorABI = [1234]
-const aggregatorAddress = '1234'
-
-// ABI and address for Aave LendingPool contract
-const lendingPoolABI = [1234] // replace with actual ABI
-const lendingPoolAddress = '1234' // replace with actual address
-
-// Create a new instance of the contract
-const lendingPool = useMemo(
-  () => new ethers.Contract(lendingPoolAddress, lendingPoolABI, provider),
-  [provider],
-)
+// TODO need to update
+import contractABI from '../../abis/YieldAggregator';
 
 
 const MainPage = ({ account }) => {
-  const provider = useMemo(
-    () => new ethers.providers.Web3Provider(window.ethereum),
-    [],
-  )
-
-  const contract = useMemo(
-    () => new ethers.Contract(aggregatorAddress, aggregatorABI, provider),
-    [provider],
-  )
-
-  const cToken = useMemo(
-    () => new ethers.Contract(cTokenAddress, cTokenABI, provider),
-    [provider],
-  )
-  const aToken = useMemo(
-    () => new ethers.Contract(aTokenAddress, aTokenABI, provider),
-    [provider],
-  )
+  // TODO Replace with your contract's address
+  const contractAddress = '0xC220Ed128102d888af857d137a54b9B7573A41b2'
+  const provider = new ethers.providers.Web3Provider(window.ethereum)
+  // TODO need to add to onMount so it only runs once.
+  const contract = new ethers.Contract(contractAddress, contractABI, provider)
 
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
   const [depositedAmount, setDepositedAmount] = useState(0)
   const [currentProtocol, setCurrentProtocol] = useState('')
-  const [compoundAPY, setCompoundAPY] = useState(0)
-  const [aaveAPY, setAaveAPY] = useState(0)
 
   const handleAmountChange = (e) => {
     setAmount(e.target.value)
   }
-
-  useEffect(() => {
-    const fetchDepositedAmount = async () => {
-      const depositedAmount = await contract.depositedAmount(account)
-      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
-    }
-
-    fetchDepositedAmount()
-  }, [account, contract])
-
-  useEffect(() => {
+ /*  useEffect(() => {
     const fetchUserData = async () => {
       // Get the signer
       const signer = provider.getSigner()
@@ -95,40 +49,18 @@ const MainPage = ({ account }) => {
     fetchUserData()
   }, [amount, provider, contract])
 
-  // Add handlers for Deposit, Rebalance, and Withdraw here
-
   useEffect(() => {
-    const calculateAPYs = async () => {
-      const supplyRatePerBlock = await cToken.supplyRatePerBlock()
-      const compoundAPY = calculateCompoundAPY(supplyRatePerBlock)
-      setCompoundAPY(compoundAPY)
-
-      const liquidityRate = await aToken.getReserveNormalizedIncome('WETH')
-      const aaveAPY = calculateAaveAPY(liquidityRate)
-      setAaveAPY(aaveAPY)
+    const fetchDepositedAmount = async () => {
+      const depositedAmount = await contract.deposit(account)
+      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
     }
 
-    calculateAPYs()
-  }, [aToken, cToken])
+    fetchDepositedAmount()
+  }, [account, contract])
 
-  const calculateCompoundAPY = (supplyRatePerBlock) => {
-    const blocksPerDay = 4 * 60 * 24 // Roughly 4 blocks in a minute
-    const daysPerYear = 365
-    const supplyRatePerDay = (supplyRatePerBlock / 1e18) * blocksPerDay
-    const compoundAPY = ((1 + supplyRatePerDay) ** daysPerYear - 1) * 100
-    return compoundAPY
-  }
 
-  const calculateAaveAPY = (liquidityRate) => {
-    const RAY = 1e27
-    const SECONDS_PER_YEAR = 31536000
-    const liquidityRateDecimal = liquidityRate / RAY
-    const aaveAPY =
-      ((1 + liquidityRateDecimal / SECONDS_PER_YEAR) ** SECONDS_PER_YEAR - 1) *
-      100
-    return aaveAPY
-  }
-
+ */
+  // Add handlers for Deposit, Rebalance, and Withdraw here
   const handleDeposit = async () => {
     // Get the signer
     const signer = provider.getSigner()
@@ -146,7 +78,7 @@ const MainPage = ({ account }) => {
     console.log(receipt)
   }
 
-  const handleWithdraw = async () => {
+  /* const handleWithdraw = async () => {
     // Get the signer
     const signer = provider.getSigner()
 
@@ -166,13 +98,21 @@ const MainPage = ({ account }) => {
   }
 
   const handleRebalance = async () => {
+    // Get the signer
     const signer = provider.getSigner()
+
+    // Connect to the contract with the signer
     const contractWithSigner = contract.connect(signer)
-    const newProtocol = compoundAPY > aaveAPY ? 2 : 1
-    const tx = await contractWithSigner.rebalance(newProtocol)
+
+    // Call the rebalance function
+    const tx = await contractWithSigner.rebalance()
+
+    // Wait for the transaction to be mined
     const receipt = await tx.wait()
+
+    // Log the transaction receipt
     console.log(receipt)
-  }
+  } */
 
   return (
     <div>
@@ -189,10 +129,10 @@ const MainPage = ({ account }) => {
             <button className="main-button" onClick={handleDeposit}>
               Deposit
             </button>
-            <button className="main-button" onClick={handleRebalance}>
+            <button className="main-button" onClick={console.log("I do not work yet")}>
               Rebalance
             </button>
-            <button className="main-button" onClick={handleWithdraw}>
+            <button className="main-button" onClick={console.log("I do not work yet")}>
               Withdraw
             </button>
           </div>
@@ -203,8 +143,6 @@ const MainPage = ({ account }) => {
               {depositedAmount}
             </p>
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
-            <p>Compound APY: {compoundAPY}</p>
-            <p>Aave APY: {aaveAPY}</p>
           </div>
         </div>
       </div>

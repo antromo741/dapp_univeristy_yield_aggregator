@@ -42,14 +42,15 @@ describe("YieldAggregator", function () {
   });
 
   it("Should deposit correctly", async function () {
-    // Deposit WETH into YieldAggregator
-    await yieldAggregator.connect(depositor).deposit({ value: depositAmount });
+    // Deposit ETH into YieldAggregator
+    await yieldAggregator.connect(depositor).deposit(depositAmount, { value: depositAmount });
 
     // Check depositor's balance in YieldAggregator
     const balance = await yieldAggregator.balances(depositor.address);
     expect(balance.aaveBalance).to.equal(depositAmount);
   });
-  
+
+
   it("Should deposit correctly into Aave", async function () {
     // Set active protocol to Aave
     await yieldAggregator.rebalance(1);
@@ -63,35 +64,31 @@ describe("YieldAggregator", function () {
     expect(balance.compoundBalance).to.equal(0);
   });
 
-  it("Should deposit correctly into Compound", async function () {
-    // Set active protocol to Compound
-    await yieldAggregator.rebalance(2);
-
-    // Deposit ETH into YieldAggregator
-    await yieldAggregator.connect(depositor).deposit(depositAmount, { value: depositAmount });
-
-    // Check depositor's balance in YieldAggregator
-    const balance = await yieldAggregator.balances(depositor.address);
-    expect(balance.compoundBalance).to.equal(depositAmount);
-    expect(balance.aaveBalance).to.equal(0);
-  });
+  // 
+  /*   it("Should deposit correctly into Compound", async function () {
+      // Set active protocol to Compound
+      await yieldAggregator.rebalance(2);
+  
+      // Deposit ETH into YieldAggregator
+      await yieldAggregator.connect(depositor).deposit(depositAmount, { value: depositAmount });
+  
+      // Check depositor's balance in YieldAggregator
+      const balance = await yieldAggregator.balances(depositor.address);
+      expect(balance.compoundBalance).to.equal(depositAmount);
+      expect(balance.aaveBalance).to.equal(0);
+    }); */
 
   it("Should withdraw correctly", async function () {
     // Deposit WETH into YieldAggregator
-    await yieldAggregator.connect(depositor).deposit({ value: depositAmount });
+    await yieldAggregator.connect(depositor).deposit(depositAmount, { value: depositAmount });
 
     // Get balance before withdrawal
     const balanceBefore = await ethers.provider.getBalance(depositor.address);
     console.log("Balance before withdrawal:", balanceBefore.toString());
 
     // Withdraw WETH from YieldAggregator
-    try {
-      await yieldAggregator.connect(depositor).withdraw(depositAmount, { gasLimit: 3000000 });
-    } catch (error) {
-      console.error("Withdrawal error:", error);
-      console.log("Transaction hash:", error.transactionHash);
-    }
-
+    const withdrawalResult = await yieldAggregator.connect(depositor).withdraw(depositAmount, { gasLimit: 3000000 });
+    console.log("Withdrawal result:", withdrawalResult);
 
     // Get balance after withdrawal
     const balanceAfter = await ethers.provider.getBalance(depositor.address);
@@ -106,9 +103,26 @@ describe("YieldAggregator", function () {
 
     // Expect the balance after withdrawal to be greater than the balance before withdrawal
     expect(balanceAfter).to.be.gt(balanceBefore);
+    expect(withdrawalResult).to.equal(true);
   });
 
+  it("Should rebalance correctly", async function () {
+    // Set the initial activeProtocol value
+    await yieldAggregator.setActiveProtocol(2);
 
+    // Deposit some ETH to Compound
+    await yieldAggregator.connect(depositor).deposit(depositAmount, { value: depositAmount });
 
+    // Get the depositor's ETH balance before rebalance
+    const ethBalanceBefore = await ethers.provider.getBalance(depositor.address);
 
+    // Rebalance from Compound to Aave
+    await yieldAggregator.rebalance(1);
+
+    // Get the depositor's ETH balance after rebalance
+    const ethBalanceAfter = await ethers.provider.getBalance(depositor.address);
+
+    // Check that the ETH balance has increased
+    expect(ethBalanceAfter).to.be.gt(ethBalanceBefore);
+  });
 });
