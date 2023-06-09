@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@aave/core-v3": "^1.17.2",
     "@compound-finance/compound-js": "^0.6.1",
     "@openzeppelin/contracts": "^4.9.1",
     "@testing-library/jest-dom": "^5.16.5",

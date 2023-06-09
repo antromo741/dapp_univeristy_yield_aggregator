@@ -127,6 +127,8 @@ interface ICompound {
 
 interface IWETH is IERC20 {
     function deposit() external payable;
+
+    function withdraw(uint256 amount) external;
 }
 
 interface IWETHGateway {
@@ -208,7 +210,7 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
         // Transfer WETH from the contract to Aave
         weth.transfer(AAVE_POOL_ADDRESS, amount);
-        balances[msg.sender].aaveBalance += msg.value;
+        balances[msg.sender].aaveBalance += amount; // Increment the Aave balance by the deposited amount
         emit Deposit(msg.sender, amount);
     }
 
@@ -227,11 +229,15 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     }
 
     // Main deposit function
-    function deposit() public payable {
-        uint256 amount = msg.value;
+    // Main deposit function
+    function deposit(uint256 amount) public payable nonReentrant {
         require(
             amount > 0,
             "YieldAggregator: deposit amount must be greater than 0"
+        );
+        require(
+            msg.value == amount,
+            "YieldAggregator: Ether sent does not match the specified amount"
         );
 
         // Wrap ETH to WETH
@@ -256,9 +262,33 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Deposit(msg.sender, amount);
     }
 
-    function _withdrawFromAave(uint256 amount) public {
-        wethGateway.withdrawETH(address(aavePool), amount, msg.sender);
-        balances[msg.sender].aaveBalance -= amount;
+    function _withdrawFromAave(uint256 amount) internal {
+        // Check user's Aave balance
+        require(
+            balances[msg.sender].aaveBalance >= amount,
+            "YieldAggregator: Not enough user balance"
+        );
+
+        // Withdraw underlying ETH from Aave pool
+        aavePool.withdraw(WETH_ADDRESS, amount, address(this));
+
+        // Check WETH balance
+        uint256 wethBalance = weth.balanceOf(address(this));
+        require(
+            wethBalance >= amount,
+            "YieldAggregator: Not enough WETH balance"
+        );
+
+        // Unwrap the received WETH to ETH
+        weth.withdraw(amount);
+
+        // Transfer the unwrapped ETH to the user
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "YieldAggregator: ETH transfer failed");
+
+        // Update the user's Aave balance
+        balances[msg.sender].aaveBalance -= amount; // Decrement the Aave balance by the withdrawn amount
+
         emit Withdraw(msg.sender, amount);
     }
 
