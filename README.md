@@ -39,6 +39,6 @@ Click the circle for your account in the top right. Click settings. Go to networ
 
 Now we can finally interact with the app. Click connect wallet and connect the hardhat account. Then type in an amount and hit deposit. It will deposit it into the aave protocol. To withdraw your funds simply hit withdraw. 
 
-If you want to rebalance your funds into theprotocol with better APY just hit rebalance and it will rebalance the funds accordingly.
+If you want to rebalance your funds into the protocol with better APY just hit rebalance and it will rebalance the funds accordingly.
 
-And Thats all there is to it.A great way to maximize the amount you can earn with your crypto investments betwwenaave and compound protocol.
+And Thats all there is to it. A great way to maximize the amount you can earn with your crypto investments betwwenaave and compound protocol.
