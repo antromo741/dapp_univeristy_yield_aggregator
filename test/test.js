@@ -60,7 +60,7 @@ describe("YieldAggregator", function () {
     // Check depositor's WETH balance after withdrawal
     const afterWithdrawBalance = await weth.balanceOf(depositor.address);
     expect(afterWithdrawBalance).to.be.gt(beforeWithdrawBalance); // Balance should have increased after withdrawal
-});
+  });
 
   it("Should deposit to Compound correctly", async function () {
     // Call the depositToCompound function
@@ -91,38 +91,42 @@ describe("YieldAggregator", function () {
     // Check depositor's WETH balance after withdrawal
     const afterWithdrawBalance = await weth.balanceOf(depositor.address);
     expect(afterWithdrawBalance).to.be.gt(beforeWithdrawBalance); // Balance should have increased after withdrawal
-});
+  });
 
   it("Should rebalance from Aave to Compound", async function () {
-    console.log("start rebalance");
-
-    // User deposits 1 WETH into Aave
+    // Deposit WETH into YieldAggregator (Aave)
     await yieldAggregator.connect(depositor).depositToAave(depositAmount);
-    console.log("Just deposited to aave");
 
     // Check depositor's balance in YieldAggregator
     let balance = await yieldAggregator.balances(depositor.address);
-    console.log("Just got balance", balance);
     expect(balance.aaveBalance).to.equal(depositAmount);
-    console.log("Just got aave balance", balance.aaveBalance);
-    
-    // Check user's Aave balance
-    /* let aaveBalance = await yieldAggregator.balances(depositor.address).aaveBalance;
-    console.log("Just got balance", aaveBalance);
-
-    expect(aaveBalance).to.equal(depositAmount);
-    console.log("Just checked balance"); */
 
     // Rebalance from Aave to Compound
     await yieldAggregator.connect(depositor).rebalance(0); // 0 represents Compound
-    console.log("Started rebalance", balance.aaveBalance);
 
     // Check user's balances after rebalance
-    balance = await yieldAggregator.balances(depositor.address).aaveBalance;
-    let compoundBalance = await yieldAggregator.balances(depositor.address).compoundBalance;
-
+    balance = await yieldAggregator.balances(depositor.address);
     expect(balance.aaveBalance).to.equal(0); // All funds should have moved from Aave to Compound
-    expect(balance.compoundBalance).to.equal(depositAmount); // All funds should now be in Compound
+    expect(balance.compoundBalance).to.be.at.least(depositAmount); // Compound balance should be at least the deposit amount
+    expect(balance.contractBalance).to.equal(0); // Contract balance should be 0 after rebalance
+  });
+
+  it("Should rebalance from Compound to Aave when Aave has higher APY", async function () {
+    // Deposit WETH into YieldAggregator (Compound)
+    await yieldAggregator.connect(depositor).depositToCompound(depositAmount);
+
+    // Check depositor's balance in YieldAggregator
+    let balance = await yieldAggregator.balances(depositor.address);
+    expect(balance.compoundBalance).to.equal(depositAmount);
+
+    // Rebalance from Compound to Aave
+    await yieldAggregator.connect(depositor).rebalance(1); // 1 represents Aave
+
+    // Check user's balances after rebalance
+    balance = await yieldAggregator.balances(depositor.address);
+    expect(balance.compoundBalance).to.equal(0); // All funds should have moved from Compound to Aave
+    expect(balance.aaveBalance).to.be.at.least(depositAmount); // Aave balance should be at least the deposit amount
+    expect(balance.contractBalance).to.equal(0); // Contract balance should be 0 after rebalance
   });
 
 
