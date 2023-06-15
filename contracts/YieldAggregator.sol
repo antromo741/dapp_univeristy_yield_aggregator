@@ -5,79 +5,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@aave/core-v3/contracts/interfaces/ipool.sol";
 
 // Implement the Checks Effects and Interactions Method
-
-interface IAaveV3Pool {
-    function supply(
-        address asset,
-        uint256 amount,
-        address onBehalfOf,
-        uint16 referralCode
-    ) external;
-
-    function withdraw(
-        address asset,
-        uint256 amount,
-        address to
-    ) external returns (uint256);
-
-    function borrow(
-        address asset,
-        uint256 amount,
-        uint256 interestRateMode,
-        uint16 referralCode,
-        address onBehalfOf
-    ) external;
-
-    function repay(
-        address asset,
-        uint256 amount,
-        uint256 rateMode,
-        address onBehalfOf
-    ) external;
-
-    function swapBorrowRateMode(address asset, uint256 rateMode) external;
-
-    function rebalanceStableBorrowRate(address asset, address user) external;
-
-    function getReserveData(
-        address asset
-    ) external view returns (ReserveData memory);
-}
-
-// Aave v3 IAToken interface
-interface IAaveAToken {
-    function UNDERLYING_ASSET_ADDRESS() external view returns (address);
-
-    function POOL() external view returns (address);
-
-    function balanceOf(address _user) external view returns (uint256);
-
-    function scaledBalanceOf(address _user) external view returns (uint256);
-
-    function totalSupply() external view returns (uint256);
-
-    function scaledTotalSupply() external view returns (uint256);
-
-    function transfer(
-        address recipient,
-        uint256 amount
-    ) external returns (bool);
-
-    function allowance(
-        address owner,
-        address spender
-    ) external view returns (uint256);
-
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    function transferFrom(
-        address sender,
-        address recipient,
-        uint256 amount
-    ) external returns (bool);
-}
 
 struct ReserveData {
     uint256 configuration;
@@ -163,20 +93,20 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the addresses of the Aave and Compound contracts
     IWETHGateway public wethGateway;
     ICEther public cEther;
-    IAaveV3Pool public aavePool;
+    IPool public aavePool;
     ICompound public compound;
     uint8 public activeProtocol;
     IWETH public weth;
 
     address public constant COMPOUND_ADDRESS =
         0xA17581A9E3356d9A858b789D68B4d866e593aE94;
+
     address public constant AAVE_POOL_ADDRESS =
         0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
+
     address public constant WETH_ADDRESS =
         0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    IWETHGateway public constant WETH_GATEWAY_ADDRESS =
-        IWETHGateway(0xDcD33426BA191383f1c9B431A342498fdac73488);
     ICEther public constant CETHER_ADDRESS =
         ICEther(0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5);
 
@@ -196,23 +126,25 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     event Debug(string message);
 
     constructor() {
-        aavePool = IAaveV3Pool(AAVE_POOL_ADDRESS);
+        aavePool = IPool(AAVE_POOL_ADDRESS);
         compound = ICompound(COMPOUND_ADDRESS);
         weth = IWETH(WETH_ADDRESS);
-        wethGateway = IWETHGateway(WETH_GATEWAY_ADDRESS);
         cEther = ICEther(CETHER_ADDRESS);
         activeProtocol = 1;
     }
 
-    function getATokenAddress() public view returns (address) {
-        ReserveData memory data = aavePool.getReserveData(address(weth));
-        return data.aTokenAddress;
-    }
+    //require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
+    // need to prompt user in frontend to hit accept
+    function depositToAave(uint256 amount) public payable {
+        // The user approves the contract to transfer WETH on their behalf
+        weth.approve(address(this), amount);
 
-    function _depositToAave(uint256 amount) public payable {
-        require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
-        // Transfer WETH from the contract to Aave
-        weth.transfer(AAVE_POOL_ADDRESS, amount);
+        // The contract transfers WETH from the user to itself
+        weth.transferFrom(msg.sender, address(this), amount);
+
+        // The contract deposits the WETH into Aave
+        aavePool.supply(WETH_ADDRESS, amount, address(this), 0);
+
         balances[msg.sender].aaveBalance += amount; // Increment the Aave balance by the deposited amount
         emit Deposit(msg.sender, amount);
     }
@@ -231,7 +163,11 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Deposit(msg.sender, amount);
     }
 
-    // Main deposit function
+    // Main deposit function  // Check that the contract has received the WETH
+    /*     require(
+            weth.balanceOf(address(this)) >= amount,
+            "YieldAggregator: WETH transfer failed"
+        ); */
     function deposit(uint256 amount) public payable nonReentrant {
         require(
             amount > 0,
@@ -242,18 +178,9 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
             "YieldAggregator: Ether sent does not match the specified amount"
         );
 
-        // Wrap ETH to WETH
-        weth.deposit{value: amount}();
-
-        // Check that the contract has received the WETH
-        require(
-            weth.balanceOf(address(this)) >= amount,
-            "YieldAggregator: WETH transfer failed"
-        );
-
         // Deposit based on the active protocol
         if (activeProtocol == 1) {
-            _depositToAave(amount);
+            depositToAave(amount);
         } else if (activeProtocol == 2) {
             _depositToCompound(amount);
         } else {

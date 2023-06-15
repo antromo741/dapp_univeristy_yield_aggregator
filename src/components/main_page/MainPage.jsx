@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { ethers } from 'ethers'
 import './mainpage.css'
 // TODO need to update
-import contractABI from '../../abis/YieldAggregator';
-
+import contractABI from '../../abis/YieldAggregator'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
@@ -20,7 +19,7 @@ const MainPage = ({ account }) => {
   const handleAmountChange = (e) => {
     setAmount(e.target.value)
   }
- /*  useEffect(() => {
+  /*  useEffect(() => {
     const fetchUserData = async () => {
       // Get the signer
       const signer = provider.getSigner()
@@ -65,13 +64,26 @@ const MainPage = ({ account }) => {
     // Get the signer
     const signer = provider.getSigner()
 
+    // Create a contract instance for the WETH contract
+    const wethContract = new ethers.Contract(WETH_ADDRESS, WETH_ABI, signer)
+
+    // Prompt the user to approve the transfer
+    const amountToApprove = ethers.utils.parseEther(amount) // Approve the amount to be deposited
+    const approveTx = await wethContract.approve(
+      contractAddress,
+      amountToApprove,
+    )
+
+    // Wait for the approval transaction to be mined
+    await approveTx.wait()
+
     // Connect to the contract with the signer
     const contractWithSigner = contract.connect(signer)
 
     // Call the deposit function
     const tx = await contractWithSigner.deposit(ethers.utils.parseEther(amount))
 
-    // Wait for the transaction to be mined
+    // Wait for the deposit transaction to be mined
     const receipt = await tx.wait()
 
     // Log the transaction receipt
@@ -129,10 +141,16 @@ const MainPage = ({ account }) => {
             <button className="main-button" onClick={handleDeposit}>
               Deposit
             </button>
-            <button className="main-button" onClick={console.log("I do not work yet")}>
+            <button
+              className="main-button"
+              onClick={console.log('I do not work yet')}
+            >
               Rebalance
             </button>
-            <button className="main-button" onClick={console.log("I do not work yet")}>
+            <button
+              className="main-button"
+              onClick={console.log('I do not work yet')}
+            >
               Withdraw
             </button>
           </div>
