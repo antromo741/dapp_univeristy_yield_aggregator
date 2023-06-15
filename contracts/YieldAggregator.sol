@@ -122,6 +122,23 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
     // need to prompt user in frontend to hit accept
     function depositToAave(uint256 amount) public {
+        // Check user's WETH balance
+        uint256 userBalance = IWETH(WETH_ADDRESS).balanceOf(msg.sender);
+        require(
+            userBalance >= amount,
+            "YieldAggregator: Not enough WETH balance"
+        );
+
+        // Check user's WETH allowance
+        uint256 allowance = IWETH(WETH_ADDRESS).allowance(
+            msg.sender,
+            address(this)
+        );
+        require(
+            allowance >= amount,
+            "YieldAggregator: Not enough WETH allowance"
+        );
+
         // The contract transfers WETH from the user to itself
         require(
             IWETH(WETH_ADDRESS).transferFrom(msg.sender, address(this), amount),
@@ -170,6 +187,23 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     }
 
     function depositToCompound(uint256 amount) public {
+        // Check user's WETH balance
+        uint256 userBalance = IWETH(WETH_ADDRESS).balanceOf(msg.sender);
+        require(
+            userBalance >= amount,
+            "YieldAggregator: Not enough WETH balance"
+        );
+
+        // Check user's WETH allowance
+        uint256 allowance = IWETH(WETH_ADDRESS).allowance(
+            msg.sender,
+            address(this)
+        );
+        require(
+            allowance >= amount,
+            "YieldAggregator: Not enough WETH allowance"
+        );
+
         // The user approves the contract to transfer WETH on their behalf
         require(
             IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, amount),
@@ -184,7 +218,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
         // The contract deposits the WETH into Compound
         IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, amount);
-
 
         balances[msg.sender].compoundBalance += amount; // Increment the Compound balance by the deposited amount
         emit Deposit(msg.sender, amount);
