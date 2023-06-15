@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@aave/core-v3/contracts/interfaces/ipool.sol";
+import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
 // Implement the Checks Effects and Interactions Method
 
@@ -133,61 +133,26 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         activeProtocol = 1;
     }
 
-    //require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
     // need to prompt user in frontend to hit accept
-    function depositToAave(uint256 amount) public payable {
-        // The user approves the contract to transfer WETH on their behalf
-        weth.approve(address(this), amount);
-
+    function depositToAave(uint256 amount) public {
         // The contract transfers WETH from the user to itself
-        weth.transferFrom(msg.sender, address(this), amount);
+        require(
+            IWETH(WETH_ADDRESS).transferFrom(msg.sender, address(this), amount),
+            "Transfer failed"
+        );
+
+        // The contract approves Aave to spend its WETH
+        require(
+            IWETH(WETH_ADDRESS).approve(AAVE_POOL_ADDRESS, amount),
+            "Approval failed"
+        );
 
         // The contract deposits the WETH into Aave
         aavePool.supply(WETH_ADDRESS, amount, address(this), 0);
 
-        balances[msg.sender].aaveBalance += amount; // Increment the Aave balance by the deposited amount
-        emit Deposit(msg.sender, amount);
-    }
+        // Increment the Aave balance by the deposited amount
+        balances[msg.sender].aaveBalance += amount;
 
-    function _depositToCompound(uint256 amount) public payable {
-        // Check if the amount of ETH sent matches the specified amount
-        require(msg.value == amount, "YieldAggregator: ETH amount mismatch");
-
-        // Deposit ETH directly into Compound
-        weth.transfer(COMPOUND_ADDRESS, amount);
-
-        // Update the user's balance in this contract
-        balances[msg.sender].compoundBalance += msg.value;
-
-        // Emit a Deposit event
-        emit Deposit(msg.sender, amount);
-    }
-
-    // Main deposit function  // Check that the contract has received the WETH
-    /*     require(
-            weth.balanceOf(address(this)) >= amount,
-            "YieldAggregator: WETH transfer failed"
-        ); */
-    function deposit(uint256 amount) public payable nonReentrant {
-        require(
-            amount > 0,
-            "YieldAggregator: deposit amount must be greater than 0"
-        );
-        require(
-            msg.value == amount,
-            "YieldAggregator: Ether sent does not match the specified amount"
-        );
-
-        // Deposit based on the active protocol
-        if (activeProtocol == 1) {
-            depositToAave(amount);
-        } else if (activeProtocol == 2) {
-            _depositToCompound(amount);
-        } else {
-            revert("YieldAggregator: Invalid protocol");
-        }
-
-        // Emit a Deposit event
         emit Deposit(msg.sender, amount);
     }
 
@@ -220,117 +185,5 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Withdraw(msg.sender, amount);
 
         return amount; // Return the amount of ETH withdrawn
-    }
-
-    function _withdrawFromCompound(uint256 amount) public {
-        // Check that the user has enough balance in Compound
-        require(
-            cEther.balanceOfUnderlying(msg.sender) >= amount,
-            "YieldAggregator: Not enough balance in Compound"
-        );
-
-        // Withdraw ETH directly from Compound
-        uint redeemResult = cEther.redeemUnderlying(amount);
-        require(redeemResult == 0, "Redeem failed");
-
-        // Update the user's balance in this contract
-        balances[msg.sender].compoundBalance =
-            balances[msg.sender].compoundBalance -
-            amount;
-
-        // Emit a Withdraw event
-        emit Withdraw(msg.sender, amount);
-    }
-
-    function withdraw(uint256 amount) public nonReentrant {
-        uint256 balanceBefore = weth.balanceOf(msg.sender);
-
-        // Withdraw based on the active protocol
-        if (activeProtocol == 1) {
-            require(
-                balances[msg.sender].aaveBalance >= amount,
-                "YieldAggregator: Not enough balance in Aave"
-            );
-            _withdrawFromAave(amount);
-        } else if (activeProtocol == 2) {
-            require(
-                balances[msg.sender].compoundBalance >= amount,
-                "YieldAggregator: Not enough balance in Compound"
-            );
-            _withdrawFromCompound(amount);
-        } else {
-            revert("YieldAggregator: Invalid protocol");
-        }
-
-        uint256 balanceAfter = weth.balanceOf(msg.sender);
-        require(
-            balanceAfter > balanceBefore,
-            "YieldAggregator: Withdrawal didn't increase balance"
-        );
-
-        emit Withdraw(msg.sender, amount);
-    }
-
-    function setActiveProtocol(uint8 newProtocol) external onlyOwner {
-        require(
-            newProtocol == 1 || newProtocol == 2,
-            "YieldAggregator: Invalid protocol"
-        );
-
-        activeProtocol = newProtocol;
-    }
-
-    // TODO This uses a javascript function to check apys
-    // TODO Emit Events
-    function rebalance(uint8 newProtocol) public onlyOwner {
-        // Rebalance based on the new protocol
-        if (newProtocol != activeProtocol) {
-            if (newProtocol == 1) {
-                moveFundsFromCompoundToAave();
-            } else if (newProtocol == 2) {
-                moveFundsFromAaveToCompound();
-            } else {
-                revert("YieldAggregator: Invalid protocol");
-            }
-
-            // Update the active protocol
-            activeProtocol = newProtocol;
-        }
-    }
-
-    function moveFundsFromCompoundToAave() private {
-        // Check that the user has enough cTokens in the Compound pool
-        uint256 compoundBalance = balances[msg.sender].compoundBalance;
-        require(
-            compound.balanceOfUnderlying(msg.sender) >= compoundBalance,
-            "YieldAggregator: Not enough balance in Compound"
-        );
-
-        // Move funds from Compound to Aave
-        _withdrawFromCompound(compoundBalance);
-        _depositToAave(compoundBalance);
-
-        // Update the user's balance in this contract
-        balances[msg.sender].compoundBalance -= compoundBalance;
-        balances[msg.sender].aaveBalance += compoundBalance;
-    }
-
-    function moveFundsFromAaveToCompound() private {
-        // Check that the user has enough aTokens in the Aave pool
-        uint256 aaveBalance = balances[msg.sender].aaveBalance;
-        IAaveAToken aToken = IAaveAToken(getATokenAddress());
-
-        require(
-            aToken.balanceOf(msg.sender) >= aaveBalance,
-            "YieldAggregator: Not enough balance in Aave"
-        );
-
-        // Move funds from Aave to Compound
-        _withdrawFromAave(aaveBalance);
-        _depositToCompound(aaveBalance);
-
-        // Update the user's balance in this contract
-        balances[msg.sender].aaveBalance -= aaveBalance;
-        balances[msg.sender].compoundBalance += aaveBalance;
     }
 }
