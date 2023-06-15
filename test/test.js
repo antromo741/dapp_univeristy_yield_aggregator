@@ -73,5 +73,30 @@ describe("YieldAggregator", function () {
     const balance = await yieldAggregator.balances(depositor.address);
     expect(balance.compoundBalance).to.equal(depositAmount);
   });
+
+  it("Should withdraw the entire balance from Compound", async function () {
+    // Deposit WETH into YieldAggregator first
+    await yieldAggregator.connect(depositor).depositToCompound(depositAmount);
+
+    // Get WETH contract
+    const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
+
+    // Get depositor's WETH balance before withdrawal
+    const beforeWithdrawBalance = await weth.balanceOf(depositor.address);
+
+    // Get depositor's balance in YieldAggregator
+    const compoundBalance = (await yieldAggregator.balances(depositor.address)).compoundBalance;
+
+    // Withdraw entire balance from YieldAggregator
+    await yieldAggregator.connect(depositor).withdrawFromCompound(compoundBalance);
+
+    // Check depositor's balance in YieldAggregator
+    const balance = await yieldAggregator.balances(depositor.address);
+    expect(balance.compoundBalance).to.equal(0); // All WETH has been withdrawn
+
+    // Check depositor's WETH balance after withdrawal
+    const afterWithdrawBalance = await weth.balanceOf(depositor.address);
+    expect(afterWithdrawBalance).to.equal(beforeWithdrawBalance.add(compoundBalance));
+  });
 });
 

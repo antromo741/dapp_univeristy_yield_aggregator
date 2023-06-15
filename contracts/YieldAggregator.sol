@@ -222,4 +222,30 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         balances[msg.sender].compoundBalance += amount; // Increment the Compound balance by the deposited amount
         emit Deposit(msg.sender, amount);
     }
+
+    function withdrawFromCompound(uint256 amount) public {
+        // Check user's Compound balance
+        require(
+            balances[msg.sender].compoundBalance >= amount,
+            "YieldAggregator: Not enough user balance"
+        );
+
+        // Withdraw WETH from Compound
+        IComet(cWETH_ADDRESS).withdraw(WETH_ADDRESS, amount);
+
+        // Check WETH balance
+        uint256 wethBalance = weth.balanceOf(address(this));
+        require(
+            wethBalance >= amount,
+            "YieldAggregator: Not enough WETH balance"
+        );
+
+        // Transfer the WETH to the user
+        weth.transfer(msg.sender, amount);
+
+        // Update the user's Compound balance
+        balances[msg.sender].compoundBalance -= amount; // Decrement the Compound balance by the withdrawn amount
+
+        emit Withdraw(msg.sender, amount);
+    }
 }
