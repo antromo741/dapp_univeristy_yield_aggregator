@@ -248,4 +248,50 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
         emit Withdraw(msg.sender, amount);
     }
+
+    // TODO make js function to calculate apys
+    function rebalance(uint8 highestAPYProtocol) public {
+        // Check that highestAPYProtocol is either 0 or 1
+        require(
+            highestAPYProtocol == 0 || highestAPYProtocol == 1,
+            "YieldAggregator: Invalid protocol"
+        );
+
+        // Get the user's balances
+        // UserBalance storage userBalance = balances[msg.sender];
+
+        if (highestAPYProtocol == 0 && balances[msg.sender].aaveBalance > 0) {
+            // Move funds from Aave to Compound
+            aavePool.withdraw(
+                WETH_ADDRESS,
+                balances[msg.sender].aaveBalance,
+                address(this)
+            );
+            IComet(cWETH_ADDRESS).supply(
+                WETH_ADDRESS,
+                balances[msg.sender].aaveBalance
+            );
+            balances[msg.sender].compoundBalance += balances[msg.sender]
+                .aaveBalance;
+            balances[msg.sender].aaveBalance = 0; // Update the Aave balance after the funds have been moved
+        } else if (
+            highestAPYProtocol == 1 && balances[msg.sender].compoundBalance > 0
+        ) {
+            // Move funds from Compound to Aave
+            IComet(cWETH_ADDRESS).withdraw(
+                WETH_ADDRESS,
+                balances[msg.sender].compoundBalance
+            );
+            aavePool.supply(
+                WETH_ADDRESS,
+                balances[msg.sender].compoundBalance,
+                address(this),
+                0
+            );
+            balances[msg.sender].aaveBalance += balances[msg.sender].compoundBalance;
+            balances[msg.sender].compoundBalance = 0; // Update the Compound balance after the funds have been moved
+        }
+
+        emit Rebalance(msg.sender);
+    }
 }
