@@ -156,13 +156,14 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         emit Deposit(msg.sender, amount);
     }
 
-    function _withdrawFromAave(uint256 amount) internal returns (uint256) {
+    function withdrawFromAave(uint256 amount) public {
         // Check user's Aave balance
         require(
             balances[msg.sender].aaveBalance >= amount,
             "YieldAggregator: Not enough user balance"
         );
 
+        // Withdraw WETH from Aave
         aavePool.withdraw(WETH_ADDRESS, amount, address(this));
 
         // Check WETH balance
@@ -172,18 +173,12 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
             "YieldAggregator: Not enough WETH balance"
         );
 
-        // Unwrap the received WETH to ETH
-        weth.withdraw(amount);
-
-        // Transfer the unwrapped ETH to the user
-        (bool success, ) = msg.sender.call{value: amount}("");
-        require(success, "YieldAggregator: ETH transfer failed");
+        // Transfer the WETH to the user
+        weth.transfer(msg.sender, amount);
 
         // Update the user's Aave balance
         balances[msg.sender].aaveBalance -= amount; // Decrement the Aave balance by the withdrawn amount
 
         emit Withdraw(msg.sender, amount);
-
-        return amount; // Return the amount of ETH withdrawn
     }
 }

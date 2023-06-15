@@ -8,7 +8,7 @@ describe("YieldAggregator", function () {
   const depositAmount = ethers.utils.parseEther("1.0"); // 1 WETH
 
   // Mainnet WETH address
-  const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"; 
+  const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 
   beforeEach(async function () {
     [depositor] = await ethers.getSigners();
@@ -39,5 +39,31 @@ describe("YieldAggregator", function () {
     const balance = await yieldAggregator.balances(depositor.address);
     expect(balance.aaveBalance).to.equal(depositAmount);
   });
+
+  it("Should withdraw the entire balance from Aave", async function () {
+    // Deposit WETH into YieldAggregator first
+    await yieldAggregator.connect(depositor).depositToAave(depositAmount);
+
+    // Get WETH contract
+    const weth = await ethers.getContractAt("IERC20", WETH_ADDRESS);
+
+    // Get depositor's WETH balance before withdrawal
+    const beforeWithdrawBalance = await weth.balanceOf(depositor.address);
+
+    // Get depositor's balance in YieldAggregator
+    const aaveBalance = (await yieldAggregator.balances(depositor.address)).aaveBalance;
+
+    // Withdraw entire balance from YieldAggregator
+    await yieldAggregator.connect(depositor).withdrawFromAave(aaveBalance);
+
+    // Check depositor's balance in YieldAggregator
+    const balance = await yieldAggregator.balances(depositor.address);
+    expect(balance.aaveBalance).to.equal(0); // All WETH has been withdrawn
+
+    // Check depositor's WETH balance after withdrawal
+    const afterWithdrawBalance = await weth.balanceOf(depositor.address);
+    expect(afterWithdrawBalance).to.equal(beforeWithdrawBalance.add(aaveBalance));
+  });
+
 });
 
