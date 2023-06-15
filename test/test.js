@@ -65,5 +65,13 @@ describe("YieldAggregator", function () {
     expect(afterWithdrawBalance).to.equal(beforeWithdrawBalance.add(aaveBalance));
   });
 
+  it("Should deposit to Compound correctly", async function () {
+    // Call the depositToCompound function
+    await yieldAggregator.connect(depositor).depositToCompound(depositAmount);
+
+    // Check depositor's balance in YieldAggregator
+    const balance = await yieldAggregator.balances(depositor.address);
+    expect(balance.compoundBalance).to.equal(depositAmount);
+  });
 });
 

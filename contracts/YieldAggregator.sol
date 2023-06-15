@@ -8,79 +8,72 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
 // Implement the Checks Effects and Interactions Method
+library CometStructs {
+    struct AssetInfo {
+        uint8 offset;
+        address asset;
+        address priceFeed;
+        uint64 scale;
+        uint64 borrowCollateralFactor;
+        uint64 liquidateCollateralFactor;
+        uint64 liquidationFactor;
+        uint128 supplyCap;
+    }
 
-struct ReserveData {
-    uint256 configuration;
-    uint128 liquidityIndex;
-    uint128 variableBorrowIndex;
-    uint128 currentLiquidityRate;
-    uint128 currentVariableBorrowRate;
-    uint128 currentStableBorrowRate;
-    uint40 lastUpdateTimestamp;
-    address aTokenAddress;
-    address stableDebtTokenAddress;
-    address variableDebtTokenAddress;
-    address interestRateStrategyAddress;
-    uint8 id;
+    struct UserBasic {
+        int104 principal;
+        uint64 baseTrackingIndex;
+        uint64 baseTrackingAccrued;
+        uint16 assetsIn;
+        uint8 _reserved;
+    }
+
+    struct TotalsBasic {
+        uint64 baseSupplyIndex;
+        uint64 baseBorrowIndex;
+        uint64 trackingSupplyIndex;
+        uint64 trackingBorrowIndex;
+        uint104 totalSupplyBase;
+        uint104 totalBorrowBase;
+        uint40 lastAccrualTime;
+        uint8 pauseFlags;
+    }
+
+    struct UserCollateral {
+        uint128 balance;
+        uint128 _reserved;
+    }
+
+    struct RewardOwed {
+        address token;
+        uint owed;
+    }
+
+    struct TotalsCollateral {
+        uint128 totalSupplyAsset;
+        uint128 _reserved;
+    }
 }
 
-interface ICompound {
-    function mint(uint256 mintAmount) external returns (uint256);
+interface IComet {
+    function supply(address asset, uint amount) external;
 
-    function redeem(uint256 redeemTokens) external returns (uint256);
+    function withdraw(address asset, uint amount) external;
 
-    function redeemUnderlying(uint256 redeemAmount) external returns (uint256);
+    function baseToken() external view returns (address);
 
-    function borrow(uint256 borrowAmount) external returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
 
-    function repayBorrow(uint256 repayAmount) external returns (uint256);
+    function allow(address manager, bool isAllowed) external;
+}
 
-    function repayBorrowBehalf(
-        address borrower,
-        uint256 repayAmount
-    ) external returns (uint256);
-
-    function balanceOfUnderlying(
+interface CometRewards {
+    function getRewardOwed(
+        address comet,
         address account
-    ) external view returns (uint256);
+    ) external returns (CometStructs.RewardOwed memory);
 
-    function borrowBalanceCurrent(
-        address account
-    ) external view returns (uint256);
-
-    function supplyRatePerBlock() external view returns (uint256);
-
-    function borrowRatePerBlock() external view returns (uint256);
-
-    function getCash() external view returns (uint256);
-
-    function seize(
-        address liquidator,
-        address borrower,
-        uint256 seizeTokens
-    ) external returns (uint256);
-}
-
-interface IWETHGateway {
-    function depositETH(
-        address lendingPool,
-        address onBehalfOf,
-        uint16 referralCode
-    ) external payable;
-
-    function withdrawETH(
-        address lendingPool,
-        uint256 amount,
-        address onBehalfOf
-    ) external;
-}
-
-interface ICEther {
-    function mint() external payable;
-
-    function balanceOfUnderlying(address account) external view returns (uint);
-
-    function redeemUnderlying(uint redeemAmount) external returns (uint);
+    function claim(address comet, address src, bool shouldAccrue) external;
 }
 
 interface IWETH is IERC20 {
@@ -91,14 +84,12 @@ interface IWETH is IERC20 {
 
 contract YieldAggregator is ReentrancyGuard, Ownable {
     // Save the addresses of the Aave and Compound contracts
-    IWETHGateway public wethGateway;
-    ICEther public cEther;
     IPool public aavePool;
-    ICompound public compound;
+    IComet public compound;
     uint8 public activeProtocol;
     IWETH public weth;
 
-    address public constant COMPOUND_ADDRESS =
+    address public constant cWETH_ADDRESS =
         0xA17581A9E3356d9A858b789D68B4d866e593aE94;
 
     address public constant AAVE_POOL_ADDRESS =
@@ -106,9 +97,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
     address public constant WETH_ADDRESS =
         0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-
-    ICEther public constant CETHER_ADDRESS =
-        ICEther(0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5);
 
     // To keep track of the user balances
     mapping(address => UserBalance) public balances;
@@ -127,9 +115,8 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
 
     constructor() {
         aavePool = IPool(AAVE_POOL_ADDRESS);
-        compound = ICompound(COMPOUND_ADDRESS);
+        compound = IComet(cWETH_ADDRESS);
         weth = IWETH(WETH_ADDRESS);
-        cEther = ICEther(CETHER_ADDRESS);
         activeProtocol = 1;
     }
 
@@ -180,5 +167,26 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         balances[msg.sender].aaveBalance -= amount; // Decrement the Aave balance by the withdrawn amount
 
         emit Withdraw(msg.sender, amount);
+    }
+
+    function depositToCompound(uint256 amount) public {
+        // The user approves the contract to transfer WETH on their behalf
+        require(
+            IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, amount),
+            "Approval failed"
+        );
+
+        // The contract transfers WETH from the user to itself
+        require(
+            IWETH(WETH_ADDRESS).transferFrom(msg.sender, address(this), amount),
+            "Transfer failed"
+        );
+
+        // The contract deposits the WETH into Compound
+        IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, amount);
+
+
+        balances[msg.sender].compoundBalance += amount; // Increment the Compound balance by the deposited amount
+        emit Deposit(msg.sender, amount);
     }
 }
