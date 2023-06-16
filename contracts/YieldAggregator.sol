@@ -122,6 +122,12 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         activeProtocol = 1;
     }
 
+    function getUserBalance(
+        address user
+    ) public view returns (UserBalance memory) {
+        return balances[user];
+    }
+
     // need to prompt user in frontend to hit accept
     function depositToAave(uint256 amount) public {
         // Check user's WETH balance
