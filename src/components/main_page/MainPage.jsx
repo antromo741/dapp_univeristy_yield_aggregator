@@ -63,17 +63,17 @@ const MainPage = ({ account }) => {
       await weth.approve(yieldAggregatorAddress, weiAmount)
     }
 
-    // Start depositing
-    setDepositing(true)
+    // Calculate APYs
+    const { aaveAPY, compoundAPY } = await calculateAPYs()
 
-    try {
-      // Deposit WETH into YieldAggregator
+    // Determine which protocol has the highest APY
+    const protocol = aaveAPY > compoundAPY ? 0 : 1
+
+    // Deposit WETH into YieldAggregator based on the protocol with the highest APY
+    if (protocol === 0) {
       await contract.depositToAave(weiAmount)
-    } catch (error) {
-      console.error('Failed to deposit', error)
-    } finally {
-      // Finish depositing
-      setDepositing(false)
+    } else {
+      await contract.depositToCompound(weiAmount)
     }
   }
 
@@ -90,8 +90,23 @@ const MainPage = ({ account }) => {
       return
     }
 
-    // Proceed with withdrawal
-    await contract.withdrawFromAave()
+    // Withdraw from Aave if there are funds
+    if (depositedAmount.aaveBalance > 0) {
+      try {
+        await contract.withdrawFromAave()
+      } catch (error) {
+        console.error('Failed to withdraw from Aave', error)
+      }
+    }
+
+    // Withdraw from Compound if there are funds
+    if (depositedAmount.compoundBalance > 0) {
+      try {
+        await contract.withdrawFromCompound()
+      } catch (error) {
+        console.error('Failed to withdraw from Compound', error)
+      }
+    }
   }
 
   const handleRebalance = async () => {
@@ -113,8 +128,22 @@ const MainPage = ({ account }) => {
     // Determine which protocol has the highest APY
     const protocol = aaveAPY > compoundAPY ? 0 : 1
 
+    // If funds are already in the protocol with the highest APY, no need to rebalance
+    if (
+      (protocol === 0 && depositedAmount.aaveBalance > 0) ||
+      (protocol === 1 && depositedAmount.compoundBalance > 0)
+    ) {
+      alert('Funds are already in the protocol with the highest APY')
+      return
+    }
+
     // Rebalance
-    await contract.rebalance(protocol)
+    try {
+      await contract.rebalance(protocol)
+      alert('Rebalance successful')
+    } catch (error) {
+      console.error('Failed to rebalance', error)
+    }
   }
 
   const calculateAPYs = async () => {
