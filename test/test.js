@@ -107,7 +107,7 @@ describe("YieldAggregator", function () {
     // Check user's balances after rebalance
     balance = await yieldAggregator.balances(depositor.address);
     expect(balance.aaveBalance).to.equal(0); // All funds should have moved from Aave to Compound
-    expect(balance.compoundBalance).to.be.at.least(depositAmount); // Compound balance should be at least the deposit amount
+    expect(balance.compoundBalance).to.be.gt(depositAmount); // Compound balance should be at least the deposit amount
     expect(balance.contractBalance).to.equal(0); // Contract balance should be 0 after rebalance
   });
 
@@ -125,7 +125,7 @@ describe("YieldAggregator", function () {
     // Check user's balances after rebalance
     balance = await yieldAggregator.balances(depositor.address);
     expect(balance.compoundBalance).to.equal(0); // All funds should have moved from Compound to Aave
-    expect(balance.aaveBalance).to.be.at.least(depositAmount); // Aave balance should be at least the deposit amount
+    expect(balance.aaveBalance).to.be.gt(depositAmount); // Aave balance should be at least the deposit amount
     expect(balance.contractBalance).to.equal(0); // Contract balance should be 0 after rebalance
   });
 

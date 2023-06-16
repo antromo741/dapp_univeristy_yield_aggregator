@@ -6,10 +6,11 @@ import contractABI from '../../abis/YieldAggregator'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
-  const contractAddress = '0xC220Ed128102d888af857d137a54b9B7573A41b2'
+  const contractAddress = ''
   const provider = new ethers.providers.Web3Provider(window.ethereum)
   // TODO need to add to onMount so it only runs once.
-  const contract = new ethers.Contract(contractAddress, contractABI, provider)
+  const signer = provider.getSigner()
+  const contract = new ethers.Contract(contractAddress, contractABI, signer)
 
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
@@ -19,112 +20,60 @@ const MainPage = ({ account }) => {
   const handleAmountChange = (e) => {
     setAmount(e.target.value)
   }
-  /*  useEffect(() => {
-    const fetchUserData = async () => {
-      // Get the signer
-      const signer = provider.getSigner()
 
-      // Get the user's address
-      const address = await signer.getAddress()
-
-      // Connect to the contract with the signer
-      const contractWithSigner = contract.connect(signer)
-
-      // Fetch the user's balance
-      const balance = await provider.getBalance(address)
-      setAccountBalance(ethers.utils.formatEther(balance))
-
-      // Fetch the user's deposited amount
-      const depositedAmount = await contractWithSigner.getDepositedAmount(
-        address,
-      )
-      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
-
-      // Fetch the current protocol
-      const protocol = await contractWithSigner.getCurrentProtocol()
-      setCurrentProtocol(protocol === 1 ? 'Aave' : 'Compound')
-    }
-
-    fetchUserData()
-  }, [amount, provider, contract])
-
-  useEffect(() => {
-    const fetchDepositedAmount = async () => {
-      const depositedAmount = await contract.deposit(account)
-      setDepositedAmount(ethers.utils.formatEther(depositedAmount))
-    }
-
-    fetchDepositedAmount()
-  }, [account, contract])
-
-
- */
   // Add handlers for Deposit, Rebalance, and Withdraw here
   const handleDeposit = async () => {
-    // Get the signer
-    const signer = provider.getSigner()
+    if (!amount) return
+    const weiAmount = ethers.utils.parseEther(amount)
 
-    // Create a contract instance for the WETH contract
-    const wethContract = new ethers.Contract(WETH_ADDRESS, WETH_ABI, signer)
+    // Get WETH contract
+    const weth = new ethers.Contract(WETH_ADDRESS, WETHcontractABI, signer)
 
-    // Prompt the user to approve the transfer
-    const amountToApprove = ethers.utils.parseEther(amount) // Approve the amount to be deposited
-    const approveTx = await wethContract.approve(
-      contractAddress,
-      amountToApprove,
-    )
+    // Get user's WETH allowance
+    const allowance = await weth.allowance(account, contractAddress)
 
-    // Wait for the approval transaction to be mined
-    await approveTx.wait()
+    // Check if allowance is less than deposit amount
+    if (allowance.lt(weiAmount)) {
+      // Prompt user to approve contract
+      await weth.approve(contractAddress, weiAmount)
+    }
 
-    // Connect to the contract with the signer
-    const contractWithSigner = contract.connect(signer)
-
-    // Call the deposit function
-    const tx = await contractWithSigner.deposit(ethers.utils.parseEther(amount))
-
-    // Wait for the deposit transaction to be mined
-    const receipt = await tx.wait()
-
-    // Log the transaction receipt
-    console.log(receipt)
+    // Deposit WETH into YieldAggregator
+    await contract.depositToAave(weiAmount)
   }
 
-  /* const handleWithdraw = async () => {
-    // Get the signer
-    const signer = provider.getSigner()
-
-    // Connect to the contract with the signer
-    const contractWithSigner = contract.connect(signer)
-
-    // Call the withdraw function
-    const tx = await contractWithSigner.withdraw(
-      ethers.utils.parseEther(amount),
-    )
-
-    // Wait for the transaction to be mined
-    const receipt = await tx.wait()
-
-    // Log the transaction receipt
-    console.log(receipt)
+  const handleWithdraw = async () => {
+    await contract.withdrawFromAave()
   }
 
   const handleRebalance = async () => {
-    // Get the signer
-    const signer = provider.getSigner()
+    // TODO: Replace 0 with the protocol that has the highest APY
+    // TODO create call to apy
+    await contract.rebalance(0)
+  }
 
-    // Connect to the contract with the signer
-    const contractWithSigner = contract.connect(signer)
+  useEffect(() => {
+    const updateBalance = async () => {
+      const balance = await contract.balances(account)
+      setDepositedAmount(ethers.utils.formatEther(balance.aaveBalance))
+      setCurrentProtocol(balance.aaveBalance.gt(0) ? 'Aave' : 'Compound')
+    }
 
-    // Call the rebalance function
-    const tx = await contractWithSigner.rebalance()
+    // Listen for Deposit, Withdraw, and Rebalance events
+    contract.on('Deposit', updateBalance)
+    contract.on('Withdraw', updateBalance)
+    contract.on('Rebalance', updateBalance)
 
-    // Wait for the transaction to be mined
-    const receipt = await tx.wait()
+    // Call updateBalance once to set the initial balance
+    updateBalance()
 
-    // Log the transaction receipt
-    console.log(receipt)
-  } */
+    return () => {
+      // Remove event listeners
+      contract.off('Deposit', updateBalance)
+      contract.off('Withdraw', updateBalance)
+      contract.off('Rebalance', updateBalance)
+    }
+  }, [account, contract])
 
   return (
     <div>
@@ -141,16 +90,10 @@ const MainPage = ({ account }) => {
             <button className="main-button" onClick={handleDeposit}>
               Deposit
             </button>
-            <button
-              className="main-button"
-              onClick={console.log('I do not work yet')}
-            >
+            <button className="main-button" onClick={handleRebalance}>
               Rebalance
             </button>
-            <button
-              className="main-button"
-              onClick={console.log('I do not work yet')}
-            >
+            <button className="main-button" onClick={handleWithdraw}>
               Withdraw
             </button>
           </div>
