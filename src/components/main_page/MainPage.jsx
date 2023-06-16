@@ -8,7 +8,7 @@ import compoundCTokenABI from '../../abis/Compound.json'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
-  const yieldAggregatorAddress = '0x85495222Fd7069B987Ca38C2142732EbBFb7175D'
+  const yieldAggregatorAddress = '0x021DBfF4A864Aa25c51F0ad2Cd73266Fde66199d'
   const contractABI = contractArtifact.abi
   const provider = new ethers.providers.Web3Provider(window.ethereum)
   // TODO need to add to onMount so it only runs once.
@@ -25,14 +25,29 @@ const MainPage = ({ account }) => {
 
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
-  const [depositedAmount, setDepositedAmount] = useState(0)
   const [currentProtocol, setCurrentProtocol] = useState('')
   const [walletBalance, setWalletBalance] = useState(0)
   const [aaveAPY, setAaveAPY] = useState('Loading...')
   const [compoundAPY, setCompoundAPY] = useState('Loading...')
+  const [depositedAmount, setDepositedAmount] = useState({
+    compoundBalance: ethers.BigNumber.from(0),
+    aaveBalance: ethers.BigNumber.from(0),
+    interestEarned: ethers.BigNumber.from(0),
+    contractBalance: ethers.BigNumber.from(0),
+  })
 
   const handleAmountChange = (e) => {
     setAmount(e.target.value)
+  }
+
+  const fetchUserBalance = async () => {
+    try {
+      const userBalance = await contract.callStatic.getUserBalance(account)
+      setDepositedAmount(userBalance)
+      console.log('got user balance', userBalance)
+    } catch (error) {
+      console.error('Failed to fetch user balance', error)
+    }
   }
 
   // Add handlers for Deposit, Rebalance, and Withdraw here
@@ -65,6 +80,9 @@ const MainPage = ({ account }) => {
       await weth.approve(yieldAggregatorAddress, weiAmount)
     }
 
+    // Transfer WETH from user to contract
+    await weth.transferFrom(account, yieldAggregatorAddress, weiAmount)
+
     // Calculate APYs
     const { aaveAPY, compoundAPY } = await calculateAPYs()
 
@@ -74,7 +92,8 @@ const MainPage = ({ account }) => {
     // Deposit WETH into YieldAggregator based on the protocol with the highest APY
     try {
       if (protocol === 0) {
-        await contract.depositToAave(weiAmount)
+        await contract.depositToAave(weiAmount, { gasLimit: 500000 });
+
       } else {
         await contract.depositToCompound(weiAmount)
       }
@@ -83,11 +102,14 @@ const MainPage = ({ account }) => {
       console.error('Failed to deposit', error)
       alert('Failed to deposit. Please check the console for more details.')
     }
+
+    fetchUserBalance()
   }
 
   const handleWithdraw = async () => {
     setWithdrawing(true)
     // Get user's deposited amount
+    console.log('user account', account)
     const depositedAmount = await contract.getUserBalance(account)
 
     // Check if user has sufficient funds in the protocol
@@ -124,6 +146,23 @@ const MainPage = ({ account }) => {
         )
       }
     }
+
+    // Transfer WETH back to user's account
+    const weth = new ethers.Contract(WETH_ADDRESS, wethContractABI, signer)
+    const contractBalance = await weth.balanceOf(yieldAggregatorAddress)
+    if (contractBalance.gt(0)) {
+      try {
+        await weth.transfer(account, contractBalance)
+        alert('WETH has been transferred back to your account')
+      } catch (error) {
+        console.error('Failed to transfer WETH back to user', error)
+        alert(
+          'Failed to transfer WETH back to your account. Please check the console for more details.',
+        )
+      }
+    }
+
+    fetchUserBalance()
     setWithdrawing(false)
   }
 
@@ -164,7 +203,7 @@ const MainPage = ({ account }) => {
       console.error('Failed to rebalance', error)
       alert('Failed to rebalance. Please check the console for more details.')
     }
-
+    fetchUserBalance()
     setRebalancing(false)
   }
 
@@ -216,7 +255,8 @@ const MainPage = ({ account }) => {
 
   useEffect(() => {
     calculateAPYs()
-  })
+    fetchUserBalance()
+  }, [])
 
   return (
     <div>
@@ -258,13 +298,35 @@ const MainPage = ({ account }) => {
             <p>Wallet balance: {walletBalance} WETH</p>
 
             <p>Current balance: {accountBalance}</p>
-            <p>
-              Amount deposited to the aggregator smart contract:
-              {depositedAmount}
-            </p>
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
             <p>Aave APY: {aaveAPY} %</p>
             <p>Compound APY: {compoundAPY} %</p>
+            <p>
+              Compound Balance:
+              {ethers.utils.formatEther(
+                depositedAmount.compoundBalance.toString(),
+              )}
+              ETH
+            </p>
+            <p>
+              Aave Balance:
+              {ethers.utils.formatEther(depositedAmount.aaveBalance.toString())}
+              ETH
+            </p>
+            <p>
+              Interest Earned:
+              {ethers.utils.formatEther(
+                depositedAmount.interestEarned.toString(),
+              )}
+              ETH
+            </p>
+            <p>
+              Contract Balance:
+              {ethers.utils.formatEther(
+                depositedAmount.contractBalance.toString(),
+              )}
+              ETH
+            </p>
           </div>
         </div>
       </div>
