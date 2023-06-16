@@ -125,6 +125,16 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
     function getUserBalance(
         address user
     ) public view returns (UserBalance memory) {
+        // Check if the user's balance exists in the balances mapping
+        if (
+            balances[user].compoundBalance == 0 &&
+            balances[user].aaveBalance == 0
+        ) {
+            // If not, return a default UserBalance struct
+            return UserBalance(0, 0, 0, 0);
+        }
+
+        // If the user's balance does exist, return it
         return balances[user];
     }
 

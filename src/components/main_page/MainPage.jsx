@@ -3,10 +3,12 @@ import { ethers } from 'ethers'
 import './mainpage.css'
 import contractArtifact from '../../abis/YieldAggregator.json'
 import wethContractABI from '../../abis/WETH.json'
+import aaveLendingPoolABI from '../../abis/AaveLendingPool.json'
+import compoundCTokenABI from '../../abis/Compound.json'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
-  const yieldAggregatorAddress = '0x30426D33a78afdb8788597D5BFaBdADc3Be95698'
+  const yieldAggregatorAddress = '0x85495222Fd7069B987Ca38C2142732EbBFb7175D'
   const contractABI = contractArtifact.abi
   const provider = new ethers.providers.Web3Provider(window.ethereum)
   // TODO need to add to onMount so it only runs once.
@@ -17,11 +19,17 @@ const MainPage = ({ account }) => {
     signer,
   )
 
+  const WETH_ADDRESS = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'
+  const cWETH_ADDRESS = '0xA17581A9E3356d9A858b789D68B4d866e593aE94'
+  const AAVE_POOL_ADDRESS = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2'
+
   const [amount, setAmount] = useState('')
   const [accountBalance, setAccountBalance] = useState(0)
   const [depositedAmount, setDepositedAmount] = useState(0)
   const [currentProtocol, setCurrentProtocol] = useState('')
   const [walletBalance, setWalletBalance] = useState(0)
+  const [aaveAPY, setAaveAPY] = useState('Loading...')
+  const [compoundAPY, setCompoundAPY] = useState('Loading...')
 
   const handleAmountChange = (e) => {
     setAmount(e.target.value)
@@ -35,11 +43,7 @@ const MainPage = ({ account }) => {
     const weiAmount = ethers.utils.parseEther(amount)
 
     // Get WETH contract
-    const weth = new ethers.Contract(
-      '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-      wethContractABI,
-      signer,
-    )
+    const weth = new ethers.Contract(WETH_ADDRESS, wethContractABI, signer)
 
     // Get user's WETH balance
     const balance = await weth.balanceOf(account)
@@ -74,57 +78,94 @@ const MainPage = ({ account }) => {
   }
 
   const handleWithdraw = async () => {
+    // Get user's deposited amount
+    const depositedAmount = await contract.getUserBalance(account)
+
+    // Check if user has sufficient funds in the protocol
+    if (
+      depositedAmount.aaveBalance === 0 &&
+      depositedAmount.compoundBalance === 0
+    ) {
+      alert('You have no funds to withdraw')
+      return
+    }
+
+    // Proceed with withdrawal
     await contract.withdrawFromAave()
   }
 
   const handleRebalance = async () => {
-    // TODO: Replace 0 with the protocol that has the highest APY
-    // TODO create call to apy
-    await contract.rebalance(0)
+    // Get user's deposited amount
+    const depositedAmount = await contract.getUserBalance(account)
+
+    // Check if user has sufficient funds in the protocol
+    if (
+      depositedAmount.aaveBalance === 0 &&
+      depositedAmount.compoundBalance === 0
+    ) {
+      alert('You have no funds to rebalance')
+      return
+    }
+
+    // Calculate APYs
+    const { aaveAPY, compoundAPY } = await calculateAPYs()
+
+    // Determine which protocol has the highest APY
+    const protocol = aaveAPY > compoundAPY ? 0 : 1
+
+    // Rebalance
+    await contract.rebalance(protocol)
   }
 
-/*   useEffect(() => {
-    const updateBalance = async () => {
-      const balance = await contract.getUserBalance(account)
+  const calculateAPYs = async () => {
+    console.log('Calculating APYs...')
 
-      setDepositedAmount(ethers.utils.formatEther(balance.aaveBalance))
-      setCurrentProtocol(balance.aaveBalance.gt(0) ? 'Aave' : 'Compound')
-    }
+    // Calculate Aave APY
+    // Known Aave Pool address
+    const aavePoolAddress = AAVE_POOL_ADDRESS
 
-    // Listen for Deposit, Withdraw, and Rebalance events
-    contract.on('Deposit', updateBalance)
-    contract.on('Withdraw', updateBalance)
-    contract.on('Rebalance', updateBalance)
-
-    // Call updateBalance once to set the initial balance
-    updateBalance()
-
-    return () => {
-      // Remove event listeners
-      contract.off('Deposit', updateBalance)
-      contract.off('Withdraw', updateBalance)
-      contract.off('Rebalance', updateBalance)
-    }
-  }, [account, contract]) */
-
-  const updateWalletBalance = async () => {
-    // Get WETH contract
-    const weth = new ethers.Contract(
-      '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-      wethContractABI,
+    const aavePoolContract = new ethers.Contract(
+      aavePoolAddress,
+      aaveLendingPoolABI,
       signer,
     )
 
-    // Get user's WETH balance
-    const balance = await weth.balanceOf(account)
+    // Get the reserve data
+    const aaveReserveData = await aavePoolContract.getReserveData(WETH_ADDRESS)
 
-    // Update wallet balance
-    setWalletBalance(ethers.utils.formatEther(balance))
+    // Get the liquidity rate
+    const aaveLiquidityRate = aaveReserveData.currentLiquidityRate / 1e27
+
+    // Convert the liquidity rate to a percentage
+    const aaveAPY = aaveLiquidityRate * 100
+
+    console.log('Aave APY:', aaveAPY)
+    setAaveAPY(aaveAPY)
+
+    const compoundContract = new ethers.Contract(
+      cWETH_ADDRESS,
+      compoundCTokenABI,
+      signer,
+    )
+
+    // Get the supply rate per block
+    const secondsPerYear = 60 * 60 * 24 * 365
+    const utilization = await compoundContract.callStatic.getUtilization()
+    const supplyRate = await compoundContract.callStatic.getSupplyRate(
+      utilization,
+    )
+    const supplyApr = (+supplyRate.toString() / 1e18) * secondsPerYear * 100
+    console.log('\tJS - Supply APR', supplyApr, '%')
+
+    setCompoundAPY(supplyApr)
+    console.log('Compound APY:', compoundAPY)
+    // Return APYs
+    return { aaveAPY, compoundAPY }
   }
 
   useEffect(() => {
-    updateWalletBalance()
-  }, [account])
+    calculateAPYs()
+  })
 
   return (
     <div>
@@ -162,6 +203,8 @@ const MainPage = ({ account }) => {
               {depositedAmount}
             </p>
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
+            <p>Aave APY: {aaveAPY} %</p>
+            <p>Compound APY: {compoundAPY} %</p>
           </div>
         </div>
       </div>
