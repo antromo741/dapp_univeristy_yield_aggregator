@@ -37,6 +37,8 @@ const MainPage = ({ account }) => {
 
   // Add handlers for Deposit, Rebalance, and Withdraw here
   const [depositing, setDepositing] = useState(false)
+  const [withdrawing, setWithdrawing] = useState(false)
+  const [rebalancing, setRebalancing] = useState(false)
 
   const handleDeposit = async () => {
     if (!amount) return
@@ -70,14 +72,21 @@ const MainPage = ({ account }) => {
     const protocol = aaveAPY > compoundAPY ? 0 : 1
 
     // Deposit WETH into YieldAggregator based on the protocol with the highest APY
-    if (protocol === 0) {
-      await contract.depositToAave(weiAmount)
-    } else {
-      await contract.depositToCompound(weiAmount)
+    try {
+      if (protocol === 0) {
+        await contract.depositToAave(weiAmount)
+      } else {
+        await contract.depositToCompound(weiAmount)
+      }
+      alert('Deposit successful')
+    } catch (error) {
+      console.error('Failed to deposit', error)
+      alert('Failed to deposit. Please check the console for more details.')
     }
   }
 
   const handleWithdraw = async () => {
+    setWithdrawing(true)
     // Get user's deposited amount
     const depositedAmount = await contract.getUserBalance(account)
 
@@ -94,8 +103,12 @@ const MainPage = ({ account }) => {
     if (depositedAmount.aaveBalance > 0) {
       try {
         await contract.withdrawFromAave()
+        alert('Withdrawal from Aave successful')
       } catch (error) {
         console.error('Failed to withdraw from Aave', error)
+        alert(
+          'Failed to withdraw from Aave. Please check the console for more details.',
+        )
       }
     }
 
@@ -103,13 +116,19 @@ const MainPage = ({ account }) => {
     if (depositedAmount.compoundBalance > 0) {
       try {
         await contract.withdrawFromCompound()
+        alert('Withdrawal from Compound successful')
       } catch (error) {
         console.error('Failed to withdraw from Compound', error)
+        alert(
+          'Failed to withdraw from Compound. Please check the console for more details.',
+        )
       }
     }
+    setWithdrawing(false)
   }
 
   const handleRebalance = async () => {
+    setRebalancing(true)
     // Get user's deposited amount
     const depositedAmount = await contract.getUserBalance(account)
 
@@ -143,7 +162,10 @@ const MainPage = ({ account }) => {
       alert('Rebalance successful')
     } catch (error) {
       console.error('Failed to rebalance', error)
+      alert('Failed to rebalance. Please check the console for more details.')
     }
+
+    setRebalancing(false)
   }
 
   const calculateAPYs = async () => {
@@ -216,11 +238,20 @@ const MainPage = ({ account }) => {
               {depositing ? 'Depositing...' : 'Deposit'}
             </button>
 
-            <button className="main-button" onClick={handleRebalance}>
-              Rebalance
+            <button
+              className="main-button"
+              onClick={handleWithdraw}
+              disabled={withdrawing}
+            >
+              {withdrawing ? 'Withdrawing...' : 'Withdraw'}
             </button>
-            <button className="main-button" onClick={handleWithdraw}>
-              Withdraw
+
+            <button
+              className="main-button"
+              onClick={handleRebalance}
+              disabled={rebalancing}
+            >
+              {rebalancing ? 'Rebalancing...' : 'Rebalance'}
             </button>
           </div>
           <div className="main-column-right">
