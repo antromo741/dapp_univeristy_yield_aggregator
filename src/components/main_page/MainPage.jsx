@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { ethers } from 'ethers'
 import './mainpage.css'
 import contractArtifact from '../../abis/YieldAggregator.json'
@@ -8,7 +8,7 @@ import compoundCTokenABI from '../../abis/Compound.json'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
-  const yieldAggregatorAddress = '0x021DBfF4A864Aa25c51F0ad2Cd73266Fde66199d'
+  const yieldAggregatorAddress = '0x447786d977Ea11Ad0600E193b2d07A06EfB53e5F'
   const contractABI = contractArtifact.abi
   const provider = new ethers.providers.Web3Provider(window.ethereum)
   // TODO need to add to onMount so it only runs once.
@@ -24,7 +24,6 @@ const MainPage = ({ account }) => {
   const AAVE_POOL_ADDRESS = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2'
 
   const [amount, setAmount] = useState('')
-  const [accountBalance, setAccountBalance] = useState(0)
   const [currentProtocol, setCurrentProtocol] = useState('')
   const [walletBalance, setWalletBalance] = useState(0)
   const [aaveAPY, setAaveAPY] = useState('Loading...')
@@ -41,14 +40,54 @@ const MainPage = ({ account }) => {
   }
 
   const fetchUserBalance = async () => {
+    console.log('Passing this account', account)
     try {
       const userBalance = await contract.callStatic.getUserBalance(account)
-      setDepositedAmount(userBalance)
       console.log('got user balance', userBalance)
+      if (userBalance) {
+        setDepositedAmount(userBalance)
+      } else {
+        console.log('Setting to 0', account)
+        setDepositedAmount({
+          compoundBalance: ethers.BigNumber.from(0),
+          aaveBalance: ethers.BigNumber.from(0),
+          interestEarned: ethers.BigNumber.from(0),
+          contractBalance: ethers.BigNumber.from(0),
+        })
+      }
     } catch (error) {
       console.error('Failed to fetch user balance', error)
     }
   }
+
+  useEffect(() => {
+    console.log('useEffect called')
+    fetchUserBalance()
+    calculateAPYs()
+    fetchWalletBalance()
+  }, [])
+
+  const fetchWalletBalance = async () => {
+    const weth = new ethers.Contract(WETH_ADDRESS, wethContractABI, signer)
+    const balance = await weth.balanceOf(account)
+    setWalletBalance(ethers.utils.formatEther(balance))
+  }
+
+  const updateCurrentProtocol = useCallback(async () => {
+    if (depositedAmount.aaveBalance.gt(depositedAmount.compoundBalance)) {
+      setCurrentProtocol('Aave')
+    } else if (
+      depositedAmount.compoundBalance.gt(depositedAmount.aaveBalance)
+    ) {
+      setCurrentProtocol('Compound')
+    } else {
+      setCurrentProtocol('None')
+    }
+  }, [depositedAmount.aaveBalance, depositedAmount.compoundBalance])
+
+  useEffect(() => {
+    updateCurrentProtocol()
+  }, [depositedAmount, updateCurrentProtocol]) // re-calculate whenever depositedAmount changes
 
   // Add handlers for Deposit, Rebalance, and Withdraw here
   const [depositing, setDepositing] = useState(false)
@@ -56,6 +95,8 @@ const MainPage = ({ account }) => {
   const [rebalancing, setRebalancing] = useState(false)
 
   const handleDeposit = async () => {
+    console.log('deposit1')
+    setDepositing(true)
     if (!amount) return
     const weiAmount = ethers.utils.parseEther(amount)
 
@@ -64,46 +105,52 @@ const MainPage = ({ account }) => {
 
     // Get user's WETH balance
     const balance = await weth.balanceOf(account)
-
+    console.log('deposit2')
     // Check if balance is less than deposit amount
     if (balance.lt(weiAmount)) {
       alert('Not enough WETH balance')
+      setDepositing(false)
       return
     }
 
     // Get user's WETH allowance
     const allowance = await weth.allowance(account, yieldAggregatorAddress)
 
-    // Check if allowance is less than deposit amount
-    if (allowance.lt(weiAmount)) {
-      // Prompt user to approve contract
-      await weth.approve(yieldAggregatorAddress, weiAmount)
+    try {
+      // Check if allowance is less than deposit amount
+      if (allowance.lt(weiAmount)) {
+        // Prompt user to approve contract
+        await weth.approve(yieldAggregatorAddress, weiAmount)
+      }
+
+      // Removed the transferFrom call here
+    } catch (error) {
+      console.error('Failed to approve', error)
+      alert('Failed to approve. Please check the console for more details.')
+      return
     }
-
-    // Transfer WETH from user to contract
-    await weth.transferFrom(account, yieldAggregatorAddress, weiAmount)
-
-    // Calculate APYs
-    const { aaveAPY, compoundAPY } = await calculateAPYs()
-
+    console.log('deposit3')
     // Determine which protocol has the highest APY
     const protocol = aaveAPY > compoundAPY ? 0 : 1
 
     // Deposit WETH into YieldAggregator based on the protocol with the highest APY
     try {
       if (protocol === 0) {
-        await contract.depositToAave(weiAmount, { gasLimit: 500000 });
-
+        await contract.depositToAave(weiAmount, { gasLimit: 5000000 })
       } else {
-        await contract.depositToCompound(weiAmount)
+        await contract.depositToCompound(weiAmount, { gasLimit: 5000000 })
       }
       alert('Deposit successful')
+
+      // Add a delay before fetching user balance
+      setTimeout(fetchUserBalance, 5000) // 5000 milliseconds = 5 seconds
+
+      setDepositing(false)
     } catch (error) {
       console.error('Failed to deposit', error)
       alert('Failed to deposit. Please check the console for more details.')
+      setDepositing(false)
     }
-
-    fetchUserBalance()
   }
 
   const handleWithdraw = async () => {
@@ -118,6 +165,7 @@ const MainPage = ({ account }) => {
       depositedAmount.compoundBalance === 0
     ) {
       alert('You have no funds to withdraw')
+      setWithdrawing(false)
       return
     }
 
@@ -126,11 +174,13 @@ const MainPage = ({ account }) => {
       try {
         await contract.withdrawFromAave()
         alert('Withdrawal from Aave successful')
+        setWithdrawing(false)
       } catch (error) {
         console.error('Failed to withdraw from Aave', error)
         alert(
           'Failed to withdraw from Aave. Please check the console for more details.',
         )
+        setWithdrawing(false)
       }
     }
 
@@ -139,31 +189,31 @@ const MainPage = ({ account }) => {
       try {
         await contract.withdrawFromCompound()
         alert('Withdrawal from Compound successful')
+        setWithdrawing(false)
       } catch (error) {
         console.error('Failed to withdraw from Compound', error)
         alert(
           'Failed to withdraw from Compound. Please check the console for more details.',
         )
+        setWithdrawing(false)
       }
     }
 
-    // Transfer WETH back to user's account
-    const weth = new ethers.Contract(WETH_ADDRESS, wethContractABI, signer)
-    const contractBalance = await weth.balanceOf(yieldAggregatorAddress)
-    if (contractBalance.gt(0)) {
-      try {
+    try {
+      // Transfer WETH back to user's account
+      const weth = new ethers.Contract(WETH_ADDRESS, wethContractABI, signer)
+      const contractBalance = await weth.balanceOf(yieldAggregatorAddress)
+      if (contractBalance.gt(0)) {
         await weth.transfer(account, contractBalance)
         alert('WETH has been transferred back to your account')
-      } catch (error) {
-        console.error('Failed to transfer WETH back to user', error)
-        alert(
-          'Failed to transfer WETH back to your account. Please check the console for more details.',
-        )
       }
+    } catch (error) {
+      console.error('Failed to transfer WETH back to user', error)
+      alert(
+        'Failed to transfer WETH back to your account. Please check the console for more details.',
+      )
+      setWithdrawing(false)
     }
-
-    fetchUserBalance()
-    setWithdrawing(false)
   }
 
   const handleRebalance = async () => {
@@ -177,6 +227,7 @@ const MainPage = ({ account }) => {
       depositedAmount.compoundBalance === 0
     ) {
       alert('You have no funds to rebalance')
+      setRebalancing(false)
       return
     }
 
@@ -192,19 +243,21 @@ const MainPage = ({ account }) => {
       (protocol === 1 && depositedAmount.compoundBalance > 0)
     ) {
       alert('Funds are already in the protocol with the highest APY')
+      setRebalancing(false)
       return
     }
 
     // Rebalance
     try {
-      await contract.rebalance(protocol)
+      await contract.rebalance(protocol, { gasLimit: 500000 })
       alert('Rebalance successful')
+      fetchUserBalance()
+      setRebalancing(false)
     } catch (error) {
       console.error('Failed to rebalance', error)
       alert('Failed to rebalance. Please check the console for more details.')
+      setRebalancing(false)
     }
-    fetchUserBalance()
-    setRebalancing(false)
   }
 
   const calculateAPYs = async () => {
@@ -253,11 +306,6 @@ const MainPage = ({ account }) => {
     return { aaveAPY, compoundAPY }
   }
 
-  useEffect(() => {
-    calculateAPYs()
-    fetchUserBalance()
-  }, [])
-
   return (
     <div>
       <h1>Yield Aggregator</h1>
@@ -297,7 +345,6 @@ const MainPage = ({ account }) => {
           <div className="main-column-right">
             <p>Wallet balance: {walletBalance} WETH</p>
 
-            <p>Current balance: {accountBalance}</p>
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
             <p>Aave APY: {aaveAPY} %</p>
             <p>Compound APY: {compoundAPY} %</p>

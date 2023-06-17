@@ -138,7 +138,6 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         return balances[user];
     }
 
-    // need to prompt user in frontend to hit accept
     function depositToAave(uint256 amount) public {
         // Check user's WETH balance
         uint256 userBalance = IWETH(WETH_ADDRESS).balanceOf(msg.sender);
@@ -196,12 +195,13 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         // Calculate interest earned
         uint256 interest = wethBalance - aaveBalance;
 
-        // Update the user's Aave balance and interest earned
-        balances[msg.sender].aaveBalance = 0; // Set the Aave balance to 0 as all funds have been withdrawn
-        balances[msg.sender].interestEarned += interest;
-
         // Transfer the WETH to the user
-        weth.transfer(msg.sender, wethBalance);
+        bool success = weth.transfer(msg.sender, wethBalance);
+        require(success, "Transfer failed");
+
+        // Update the user's Aave balance and interest earned
+        balances[msg.sender].aaveBalance = 0;
+        balances[msg.sender].interestEarned += interest;
 
         emit Withdraw(msg.sender, wethBalance);
     }
@@ -239,7 +239,7 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         // The contract deposits the WETH into Compound
         IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, amount);
 
-        balances[msg.sender].compoundBalance += amount; // Increment the Compound balance by the deposited amount
+        balances[msg.sender].compoundBalance += amount;
         emit Deposit(msg.sender, amount);
     }
 
@@ -260,17 +260,20 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
             wethBalance >= compoundBalance,
             "YieldAggregator: Not enough WETH balance"
         );
+        // Calculate interest earned
+        uint256 interest = wethBalance - compoundBalance;
 
         // Transfer the WETH to the user
-        weth.transfer(msg.sender, wethBalance);
+        bool success = weth.transfer(msg.sender, wethBalance);
+        require(success, "Transfer failed");
 
         // Update the user's Compound balance
-        balances[msg.sender].compoundBalance = 0; // Set the Compound balance to 0 as all funds have been withdrawn
+        balances[msg.sender].compoundBalance = 0;
+        balances[msg.sender].interestEarned += interest;
 
         emit Withdraw(msg.sender, wethBalance);
     }
 
-    // TODO make js function to calculate apys
     function rebalance(uint8 highestAPYProtocol) public {
         // Check that highestAPYProtocol is either 0 or 1
         require(
