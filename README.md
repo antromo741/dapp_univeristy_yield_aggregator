@@ -1,6 +1,6 @@
 # Getting Started with Romulon Yield Aggregator
 
-Feel free to watch the demo here: https://youtu.be/suprp_7RdgE
+Feel free to watch the demo here: https://youtu.be/eUDh-iMPVwg
 Things you will need: Code editor, Alchemy Account, Metamask account.
 ## How to use
 Assuming you already have your favorite text editor installed:
@@ -17,13 +17,18 @@ After signing up at alchemy.com https://www.alchemy.com/ you can create  a porje
 We will take this key into our .env.example file. Paste ypur key where it asks and rename the .env.example. to just .env. This is a hidden file with sensitve information. You do not want to leave that key out for people to see.
 
 Next we are going to run 
-### `npx hardhat node`
+### `npx hardhat node --network hardhat`
 
 This will allow us to run a local blockchain on a fork of the mainnet.
 
 To test the code, please run npx hardhat test.
 
 After ensuring all the tests are passing you can now run the project.
+
+### `npx hardhat run deploy/script.js -- network localhost`
+Type this command to deploy the smart contract. You need to do this while the node is running. 
+
+It will print the contract address which you need to take and paste into the MainPage.jsx where it shows the Aggregator contract address variable.
 
 To start the dev server type
 
