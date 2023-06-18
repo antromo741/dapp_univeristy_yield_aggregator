@@ -8,7 +8,7 @@ import compoundCTokenABI from '../../abis/Compound.json'
 
 const MainPage = ({ account }) => {
   // TODO Replace with your contract's address
-  const yieldAggregatorAddress = '0x447786d977Ea11Ad0600E193b2d07A06EfB53e5F'
+  const yieldAggregatorAddress = '0x021DBfF4A864Aa25c51F0ad2Cd73266Fde66199d'
   const contractABI = contractArtifact.abi
   const provider = new ethers.providers.Web3Provider(window.ethereum)
   // TODO need to add to onMount so it only runs once.
@@ -135,15 +135,16 @@ const MainPage = ({ account }) => {
 
     // Deposit WETH into YieldAggregator based on the protocol with the highest APY
     try {
-      if (protocol === 0) {
-        await contract.depositToAave(weiAmount, { gasLimit: 5000000 })
-      } else {
-        await contract.depositToCompound(weiAmount, { gasLimit: 5000000 })
-      }
+      const tx = await contract.deposit(weiAmount, protocol, {
+        gasLimit: 5000000,
+      })
+      await tx.wait() // Wait for the transaction to be confirmed
+
       alert('Deposit successful')
 
-      // Add a delay before fetching user balance
-      setTimeout(fetchUserBalance, 5000) // 5000 milliseconds = 5 seconds
+      // Fetch user balance and wallet balance
+      fetchUserBalance()
+      fetchWalletBalance()
 
       setDepositing(false)
     } catch (error) {
@@ -161,42 +162,29 @@ const MainPage = ({ account }) => {
 
     // Check if user has sufficient funds in the protocol
     if (
-      depositedAmount.aaveBalance === 0 &&
-      depositedAmount.compoundBalance === 0
+      ethers.utils.formatEther(depositedAmount.aaveBalance) === '0' &&
+      ethers.utils.formatEther(depositedAmount.compoundBalance) === '0'
     ) {
       alert('You have no funds to withdraw')
       setWithdrawing(false)
       return
     }
 
-    // Withdraw from Aave if there are funds
-    if (depositedAmount.aaveBalance > 0) {
-      try {
-        await contract.withdrawFromAave()
-        alert('Withdrawal from Aave successful')
-        setWithdrawing(false)
-      } catch (error) {
-        console.error('Failed to withdraw from Aave', error)
-        alert(
-          'Failed to withdraw from Aave. Please check the console for more details.',
-        )
-        setWithdrawing(false)
-      }
-    }
+    // Withdraw from the protocol
+    try {
+      const tx = await contract.withdraw({ gasLimit: 5000000 })
+      await tx.wait() // Wait for the transaction to be confirmed
 
-    // Withdraw from Compound if there are funds
-    if (depositedAmount.compoundBalance > 0) {
-      try {
-        await contract.withdrawFromCompound()
-        alert('Withdrawal from Compound successful')
-        setWithdrawing(false)
-      } catch (error) {
-        console.error('Failed to withdraw from Compound', error)
-        alert(
-          'Failed to withdraw from Compound. Please check the console for more details.',
-        )
-        setWithdrawing(false)
-      }
+      alert('Withdrawal successful')
+
+      // Fetch user balance and wallet balance
+      fetchUserBalance()
+
+      setWithdrawing(false)
+    } catch (error) {
+      console.error('Failed to withdraw', error)
+      alert('Failed to withdraw. Please deposit funds before you withdraw.')
+      setWithdrawing(false)
     }
 
     try {
@@ -206,13 +194,15 @@ const MainPage = ({ account }) => {
       if (contractBalance.gt(0)) {
         await weth.transfer(account, contractBalance)
         alert('WETH has been transferred back to your account')
+        fetchWalletBalance()
+        setWithdrawing(false)
       }
     } catch (error) {
       console.error('Failed to transfer WETH back to user', error)
       alert(
         'Failed to transfer WETH back to your account. Please check the console for more details.',
       )
-      setWithdrawing(false)
+      fetchWalletBalance()
     }
   }
 
@@ -239,8 +229,10 @@ const MainPage = ({ account }) => {
 
     // If funds are already in the protocol with the highest APY, no need to rebalance
     if (
-      (protocol === 0 && depositedAmount.aaveBalance > 0) ||
-      (protocol === 1 && depositedAmount.compoundBalance > 0)
+      (protocol === 0 &&
+        ethers.utils.formatEther(depositedAmount.aaveBalance) !== '0') ||
+      (protocol === 1 &&
+        ethers.utils.formatEther(depositedAmount.compoundBalance) !== '0')
     ) {
       alert('Funds are already in the protocol with the highest APY')
       setRebalancing(false)

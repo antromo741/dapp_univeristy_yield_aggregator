@@ -138,7 +138,7 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         return balances[user];
     }
 
-    function depositToAave(uint256 amount) public {
+    function deposit(uint256 amount, uint8 protocol) public {
         // Check user's WETH balance
         uint256 userBalance = IWETH(WETH_ADDRESS).balanceOf(msg.sender);
         require(
@@ -162,113 +162,70 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
             "Transfer failed"
         );
 
-        // The contract approves Aave to spend its WETH
-        require(
-            IWETH(WETH_ADDRESS).approve(AAVE_POOL_ADDRESS, amount),
-            "Approval failed"
-        );
+        if (protocol == 0) {
+            // The contract approves Aave to spend its WETH
+            require(
+                IWETH(WETH_ADDRESS).approve(AAVE_POOL_ADDRESS, amount),
+                "Approval failed"
+            );
 
-        // The contract deposits the WETH into Aave
-        aavePool.supply(WETH_ADDRESS, amount, address(this), 0);
+            // The contract deposits the WETH into Aave
+            aavePool.supply(WETH_ADDRESS, amount, address(this), 0);
 
-        // Increment the Aave balance by the deposited amount
-        balances[msg.sender].aaveBalance += amount;
+            // Increment the Aave balance by the deposited amount
+            balances[msg.sender].aaveBalance += amount;
+        } else if (protocol == 1) {
+            // The user approves the contract to transfer WETH on their behalf
+            require(
+                IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, amount),
+                "Approval failed"
+            );
+
+            // The contract deposits the WETH into Compound
+            IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, amount);
+
+            balances[msg.sender].compoundBalance += amount;
+        }
 
         emit Deposit(msg.sender, amount);
     }
 
-    function withdrawFromAave() public {
+    function withdraw() public {
         // Get user's Aave balance
         uint256 aaveBalance = balances[msg.sender].aaveBalance;
-        require(aaveBalance > 0, "YieldAggregator: Not enough user balance");
 
-        // Withdraw all funds from Aave
-        aavePool.withdraw(WETH_ADDRESS, type(uint256).max, address(this));
-
-        // Check WETH balance
-        uint256 wethBalance = weth.balanceOf(address(this));
-        require(
-            wethBalance >= aaveBalance,
-            "YieldAggregator: Not enough WETH balance"
-        );
-
-        // Calculate interest earned
-        uint256 interest = wethBalance - aaveBalance;
-
-        // Transfer the WETH to the user
-        bool success = weth.transfer(msg.sender, wethBalance);
-        require(success, "Transfer failed");
-
-        // Update the user's Aave balance and interest earned
-        balances[msg.sender].aaveBalance = 0;
-        balances[msg.sender].interestEarned += interest;
-
-        emit Withdraw(msg.sender, wethBalance);
-    }
-
-    function depositToCompound(uint256 amount) public {
-        // Check user's WETH balance
-        uint256 userBalance = IWETH(WETH_ADDRESS).balanceOf(msg.sender);
-        require(
-            userBalance >= amount,
-            "YieldAggregator: Not enough WETH balance"
-        );
-
-        // Check user's WETH allowance
-        uint256 allowance = IWETH(WETH_ADDRESS).allowance(
-            msg.sender,
-            address(this)
-        );
-        require(
-            allowance >= amount,
-            "YieldAggregator: Not enough WETH allowance"
-        );
-
-        // The user approves the contract to transfer WETH on their behalf
-        require(
-            IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, amount),
-            "Approval failed"
-        );
-
-        // The contract transfers WETH from the user to itself
-        require(
-            IWETH(WETH_ADDRESS).transferFrom(msg.sender, address(this), amount),
-            "Transfer failed"
-        );
-
-        // The contract deposits the WETH into Compound
-        IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, amount);
-
-        balances[msg.sender].compoundBalance += amount;
-        emit Deposit(msg.sender, amount);
-    }
-
-    function withdrawFromCompound() public {
         // Get user's Compound balance
         uint256 compoundBalance = balances[msg.sender].compoundBalance;
+
+        // Check if user has balance in either protocol
         require(
-            compoundBalance > 0,
+            aaveBalance > 0 || compoundBalance > 0,
             "YieldAggregator: Not enough user balance"
         );
 
-        // Withdraw all funds from Compound
-        IComet(cWETH_ADDRESS).withdraw(WETH_ADDRESS, type(uint256).max);
+        // Withdraw all funds from Aave if there are funds
+        if (aaveBalance > 0) {
+            aavePool.withdraw(WETH_ADDRESS, type(uint256).max, address(this));
+            balances[msg.sender].aaveBalance = 0;
+        }
+
+        // Withdraw all funds from Compound if there are funds
+        if (compoundBalance > 0) {
+            IComet(cWETH_ADDRESS).withdraw(WETH_ADDRESS, type(uint256).max);
+            balances[msg.sender].compoundBalance = 0;
+        }
 
         // Check WETH balance
         uint256 wethBalance = weth.balanceOf(address(this));
-        require(
-            wethBalance >= compoundBalance,
-            "YieldAggregator: Not enough WETH balance"
-        );
+
         // Calculate interest earned
-        uint256 interest = wethBalance - compoundBalance;
+        uint256 interest = wethBalance - (aaveBalance + compoundBalance);
 
         // Transfer the WETH to the user
         bool success = weth.transfer(msg.sender, wethBalance);
         require(success, "Transfer failed");
 
-        // Update the user's Compound balance
-        balances[msg.sender].compoundBalance = 0;
+        // Update the user's interest earned
         balances[msg.sender].interestEarned += interest;
 
         emit Withdraw(msg.sender, wethBalance);
@@ -284,59 +241,13 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
         // Get the user's balances
         UserBalance storage userBalance = balances[msg.sender];
 
-        if (highestAPYProtocol == 0 && userBalance.aaveBalance > 0) {
-            // Move funds from Aave to Compound
-            // Get user's Aave balance
-            uint256 aaveBalance = userBalance.aaveBalance;
-
-            // Withdraw all funds from Aave
-            aavePool.withdraw(WETH_ADDRESS, type(uint256).max, address(this));
-
-            // Check WETH balance
-            uint256 wethBalance = weth.balanceOf(address(this));
-
-            // Calculate interest earned
-            uint256 interest = wethBalance - aaveBalance;
-
-            // Update the user's Aave balance, contract balance and interest earned
-            userBalance.aaveBalance = 0; // Set the Aave balance to 0 as all funds have been withdrawn
-            userBalance.contractBalance = wethBalance; // Update the contract balance with the withdrawn amount
-            userBalance.interestEarned += interest; // Update the interest earned
-
-            // The contract approves Compound to spend its WETH
-            require(
-                IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, wethBalance),
-                "Approval failed"
-            );
-
-            // The contract deposits the WETH into Compound
-            IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, wethBalance);
-
-            // Update the user's Compound balance and contract balance
-            userBalance.compoundBalance += wethBalance; // Increment the Compound balance by the deposited amount
-            userBalance.contractBalance = 0; // Set the contract balance to 0 as all funds have been deposited into Compound
-        } else if (highestAPYProtocol == 1 && userBalance.compoundBalance > 0) {
-            // Move funds from Compound to Aave
-            // Get user's Compound balance
-            uint256 compoundBalance = userBalance.compoundBalance;
-
+        // If the highest APY protocol is Aave and the user has funds in Compound, move funds from Compound to Aave
+        if (highestAPYProtocol == 0 && userBalance.compoundBalance > 0) {
             // Withdraw all funds from Compound
             IComet(cWETH_ADDRESS).withdraw(WETH_ADDRESS, type(uint256).max);
 
             // Check WETH balance
             uint256 wethBalance = weth.balanceOf(address(this));
-            require(
-                wethBalance >= compoundBalance,
-                "YieldAggregator: Not enough WETH balance"
-            );
-
-            // Calculate interest earned
-            uint256 interest = wethBalance - compoundBalance;
-
-            // Update the user's Compound balance, contract balance and interest earned
-            userBalance.compoundBalance = 0; // Set the Compound balance to 0 as all funds have been withdrawn
-            userBalance.contractBalance = wethBalance; // Update the contract balance with the withdrawn amount
-            userBalance.interestEarned += interest; // Update the interest earned
 
             // The contract approves Aave to spend its WETH
             require(
@@ -347,9 +258,36 @@ contract YieldAggregator is ReentrancyGuard, Ownable {
             // The contract deposits the WETH into Aave
             aavePool.supply(WETH_ADDRESS, wethBalance, address(this), 0);
 
-            // Update the user's Aave balance and contract balance
-            userBalance.aaveBalance += wethBalance; // Increment the Aave balance by the deposited amount
-            userBalance.contractBalance = 0; // Set the contract balance to 0 as all funds have been deposited into Aave
+            // Update the user's Aave and Compound balances
+            userBalance.aaveBalance += wethBalance;
+            userBalance.compoundBalance = 0;
+        }
+        // If the highest APY protocol is Compound and the user has funds in Aave, move funds from Aave to Compound
+        else if (highestAPYProtocol == 1 && userBalance.aaveBalance > 0) {
+            // Withdraw all funds from Aave
+            aavePool.withdraw(WETH_ADDRESS, type(uint256).max, address(this));
+
+            // Check WETH balance
+            uint256 wethBalance = weth.balanceOf(address(this));
+
+            // The contract approves Compound to spend its WETH
+            require(
+                IWETH(WETH_ADDRESS).approve(cWETH_ADDRESS, wethBalance),
+                "Approval failed"
+            );
+
+            // The contract deposits the WETH into Compound
+            IComet(cWETH_ADDRESS).supply(WETH_ADDRESS, wethBalance);
+
+            // Update the user's Aave and Compound balances
+            userBalance.aaveBalance = 0;
+            userBalance.compoundBalance += wethBalance;
+        }
+        // If the user's funds are already in the highest APY protocol, do nothing
+        else {
+            revert(
+                "YieldAggregator: Funds are already in the highest APY protocol"
+            );
         }
 
         emit Rebalance(msg.sender);
