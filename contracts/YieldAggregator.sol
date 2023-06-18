@@ -8,52 +8,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@aave/core-v3/contracts/interfaces/IPool.sol";
 
 // Implement the Checks Effects and Interactions Method
-library CometStructs {
-    struct AssetInfo {
-        uint8 offset;
-        address asset;
-        address priceFeed;
-        uint64 scale;
-        uint64 borrowCollateralFactor;
-        uint64 liquidateCollateralFactor;
-        uint64 liquidationFactor;
-        uint128 supplyCap;
-    }
-
-    struct UserBasic {
-        int104 principal;
-        uint64 baseTrackingIndex;
-        uint64 baseTrackingAccrued;
-        uint16 assetsIn;
-        uint8 _reserved;
-    }
-
-    struct TotalsBasic {
-        uint64 baseSupplyIndex;
-        uint64 baseBorrowIndex;
-        uint64 trackingSupplyIndex;
-        uint64 trackingBorrowIndex;
-        uint104 totalSupplyBase;
-        uint104 totalBorrowBase;
-        uint40 lastAccrualTime;
-        uint8 pauseFlags;
-    }
-
-    struct UserCollateral {
-        uint128 balance;
-        uint128 _reserved;
-    }
-
-    struct RewardOwed {
-        address token;
-        uint owed;
-    }
-
-    struct TotalsCollateral {
-        uint128 totalSupplyAsset;
-        uint128 _reserved;
-    }
-}
 
 interface IComet {
     function supply(address asset, uint amount) external;
@@ -67,15 +21,6 @@ interface IComet {
     function allow(address manager, bool isAllowed) external;
 }
 
-interface CometRewards {
-    function getRewardOwed(
-        address comet,
-        address account
-    ) external returns (CometStructs.RewardOwed memory);
-
-    function claim(address comet, address src, bool shouldAccrue) external;
-}
-
 interface IWETH is IERC20 {
     function deposit() external payable;
 
@@ -83,7 +28,6 @@ interface IWETH is IERC20 {
 }
 
 contract YieldAggregator is ReentrancyGuard, Ownable {
-    // Save the addresses of the Aave and Compound contracts
     IPool public aavePool;
     IComet public compound;
     uint8 public activeProtocol;

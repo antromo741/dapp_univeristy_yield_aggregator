@@ -44,8 +44,9 @@ function App() {
           <div className='app-name'>Romulon Yield Aggregator</div>
           <div className='connect-wallet-address'>
             <button className="header-button" onClick={connectWallet} disabled={loading}>
-              {account ? `Connected: ${account}` : 'Connect Wallet'}
+              {account ? `Connected: ${account.slice(0, 6)}...${account.slice(-4)}` : 'Connect Wallet'}
             </button>
+
           </div>
         </div>
       </header>

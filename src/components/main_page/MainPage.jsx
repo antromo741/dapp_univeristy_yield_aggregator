@@ -7,18 +7,17 @@ import aaveLendingPoolABI from '../../abis/AaveLendingPool.json'
 import compoundCTokenABI from '../../abis/Compound.json'
 
 const MainPage = ({ account }) => {
-  // TODO Replace with your contract's address
   const yieldAggregatorAddress = '0x021DBfF4A864Aa25c51F0ad2Cd73266Fde66199d'
   const contractABI = contractArtifact.abi
   const provider = new ethers.providers.Web3Provider(window.ethereum)
-  // TODO need to add to onMount so it only runs once.
+
   const signer = provider.getSigner()
   const contract = new ethers.Contract(
     yieldAggregatorAddress,
     contractABI,
     signer,
   )
-
+  // Contract Address'
   const WETH_ADDRESS = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'
   const cWETH_ADDRESS = '0xA17581A9E3356d9A858b789D68B4d866e593aE94'
   const AAVE_POOL_ADDRESS = '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2'
@@ -40,14 +39,11 @@ const MainPage = ({ account }) => {
   }
 
   const fetchUserBalance = async () => {
-    console.log('Passing this account', account)
     try {
       const userBalance = await contract.callStatic.getUserBalance(account)
-      console.log('got user balance', userBalance)
       if (userBalance) {
         setDepositedAmount(userBalance)
       } else {
-        console.log('Setting to 0', account)
         setDepositedAmount({
           compoundBalance: ethers.BigNumber.from(0),
           aaveBalance: ethers.BigNumber.from(0),
@@ -61,7 +57,6 @@ const MainPage = ({ account }) => {
   }
 
   useEffect(() => {
-    console.log('useEffect called')
     fetchUserBalance()
     calculateAPYs()
     fetchWalletBalance()
@@ -87,17 +82,20 @@ const MainPage = ({ account }) => {
 
   useEffect(() => {
     updateCurrentProtocol()
-  }, [depositedAmount, updateCurrentProtocol]) // re-calculate whenever depositedAmount changes
+  }, [depositedAmount, updateCurrentProtocol])
 
-  // Add handlers for Deposit, Rebalance, and Withdraw here
+  // Handlers for Deposit, Rebalance, and Withdraw here
   const [depositing, setDepositing] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
   const [rebalancing, setRebalancing] = useState(false)
 
   const handleDeposit = async () => {
-    console.log('deposit1')
     setDepositing(true)
-    if (!amount) return
+    if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+      alert('Please enter a positive number')
+      setDepositing(false)
+      return
+    }
     const weiAmount = ethers.utils.parseEther(amount)
 
     // Get WETH contract
@@ -105,7 +103,6 @@ const MainPage = ({ account }) => {
 
     // Get user's WETH balance
     const balance = await weth.balanceOf(account)
-    console.log('deposit2')
     // Check if balance is less than deposit amount
     if (balance.lt(weiAmount)) {
       alert('Not enough WETH balance')
@@ -129,7 +126,6 @@ const MainPage = ({ account }) => {
       alert('Failed to approve. Please check the console for more details.')
       return
     }
-    console.log('deposit3')
     // Determine which protocol has the highest APY
     const protocol = aaveAPY > compoundAPY ? 0 : 1
 
@@ -305,11 +301,14 @@ const MainPage = ({ account }) => {
         <div className="main-row">
           <div className="main-column-left">
             <input
-              type="text"
+              type="number"
+              min="0"
+              step="0.01"
               value={amount}
               onChange={handleAmountChange}
               placeholder="Enter amount to deposit"
             />
+
             <button
               className="main-button"
               onClick={handleDeposit}
@@ -338,8 +337,9 @@ const MainPage = ({ account }) => {
             <p>Wallet balance: {walletBalance} WETH</p>
 
             <p>Current protocol where funds are deposited: {currentProtocol}</p>
-            <p>Aave APY: {aaveAPY} %</p>
-            <p>Compound APY: {compoundAPY} %</p>
+            <p>Aave APY: {parseFloat(aaveAPY).toFixed(2)} %</p>
+            <p>Compound APY: {parseFloat(compoundAPY).toFixed(2)} %</p>
+
             <p>
               Compound Balance:
               {ethers.utils.formatEther(
