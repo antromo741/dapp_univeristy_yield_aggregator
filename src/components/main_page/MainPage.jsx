@@ -198,8 +198,11 @@ const MainPage = ({ account }) => {
       alert(
         'Failed to transfer WETH back to your account. Please check the console for more details.',
       )
+      setWithdrawing(false)
       fetchWalletBalance()
     }
+    fetchUserBalance()
+    fetchWalletBalance()
   }
 
   const handleRebalance = async () => {
